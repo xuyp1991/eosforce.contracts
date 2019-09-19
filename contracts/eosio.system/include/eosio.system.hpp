@@ -208,6 +208,12 @@ namespace eosio {
       uint64_t primary_key() const { return name; }
    };
 
+   struct [[eosio::table, eosio::contract("eosio.system")]] heartbind_info {
+      account_name   bpname;
+      account_name   user;
+
+      uint64_t primary_key() const { return user; }
+   };
    // system contract tables
    typedef eosio::multi_index<"accounts"_n,    account_info>          accounts_table;
    typedef eosio::multi_index<"votes"_n,       vote_info>             votes_table;
@@ -225,6 +231,7 @@ namespace eosio {
    typedef eosio::multi_index<"punishbps"_n,   punish_bp_info>        punishbp_table;
    typedef eosio::multi_index<"bpsreward"_n,   bps_reward>            bpreward_table;
    typedef eosio::multi_index<"lastproducer"_n,last_producer>         lastproducer_table;
+   typedef eosio::multi_index<"heartbind"_n,   heartbind_info>        heartbind_table;
    /**
     * @defgroup system_contract eosio.system
     * @ingroup eosiocontracts
@@ -251,6 +258,7 @@ namespace eosio {
          blackproducer_table _blackproducers;
          bpmonitor_table     _bpmonitors;
          lastproducer_table  _lastproducers;
+         heartbind_table     _heartbinds;
 
       private:
          // to bps in onblock
@@ -360,6 +368,8 @@ namespace eosio {
 
          [[eosio::action]] void monitorevise( const account_name& bpname );
          [[eosio::action]] void removepunish( const account_name& bpname );
+
+         [[eosio::action]] void heartbind( const account_name& bpname,const account_name &user );
    };
 
    using transfer_action     = eosio::action_wrapper<"transfer"_n,     &system_contract::transfer>;
@@ -381,6 +391,7 @@ namespace eosio {
    using bailpunish_action   = eosio::action_wrapper<"bailpunish"_n,   &system_contract::bailpunish>;
    using bpclaim_action      = eosio::action_wrapper<"bpclaim"_n,      &system_contract::bpclaim>;
    using removepunish_action = eosio::action_wrapper<"removepunish"_n, &system_contract::removepunish>;
+   using heartbind_action    = eosio::action_wrapper<"heartbind"_n,    &system_contract::heartbind>;
 
    // for bp_info, cannot change it table struct
    inline void bp_info::add_total_staked( const uint32_t curr_block_num, const asset& s ) {
