@@ -222,21 +222,80 @@ namespace match {
          itr++;
       }
    }
-
+//成交数据处理，费用处理
+//成交，一定要满足一定条件再落，毕竟占用内存比较多，而且内存的支付由谁来？
    ACTION exchange::match(uint64_t scope_base,uint64_t base_id,uint64_t scope_quote, account_name exc_acc) {
       orderbooks orderbook_table( _self,scope_base );
       auto base_order = orderbook_table.find(base_id);
       check( base_order != orderbook_table.end(),"can not find base order" );
 
       auto base_price = static_cast<int128_t>(base_order->base.amount) * 1000000 / base_order->quote.amount;
-      
-      orderbooks orderbook_table_quote( _self,scope_quote );
-      auto idx = orderbook_table_quote.get_index<"pricekey"_n>();
-      auto itr_up = idx.upper_bound( base_price );
+      eosio::print_f("base_price--%----\t",base_price);
 
-      for (auto itr1 = idx.cbegin();itr1 != itr_up; ++itr1) {
-         eosio::print_f("%----low id \t",itr1->id);
+      orderbooks orderbook_table_quote( _self,scope_quote );
+
+      bool is_not_done = true;
+      uint64_t last_done_id; 
+      auto undone_base = base_order->base;
+      auto undone_quote = base_order->quote;
+      while(is_not_done) {
+         auto idx = orderbook_table_quote.get_index<"pricekey"_n>();
+         auto itr_up = idx.upper_bound( base_price );
+         auto itr_begin = idx.cbegin();
+         if ( itr_begin != itr_up ) {
+            //deal
+            auto quote_price = static_cast<int128_t>(itr_begin->quote.amount) * 1000000 / itr_begin->base.amount;
+            eosio::print_f("quote_price--%--%--%--%--%--%\t",quote_price,itr_begin->base,itr_begin->quote,itr_begin->id,undone_base,undone_quote);
+            //部分成交
+            if ( itr_begin->base <= undone_quote ) {
+               last_done_id = itr_begin->id;
+               //修改表格     或者这里不修改，到循环结束再修改
+               undone_base -= itr_begin->quote;
+               undone_quote -= itr_begin->base;
+               //成交相关处理
+               record_deals record_deal_table();
+
+
+               //打币
+               idx.erase( itr_begin );
+
+               if ( undone_quote.amount == 0 ) {
+                  is_not_done = false;
+               }
+            }
+            //全部成交  quote单有剩余
+            else {
+               last_done_id = itr_begin->id;
+               //base 还是quote要考虑一下
+               auto quote_order_quote = asset( static_cast<int128_t>(undone_quote.amount) * static_cast<int128_t>(itr_begin->quote.amount) 
+                  / itr_begin->base.amount,itr_begin->quote.symbol );
+               idx.modify(itr_begin, name{exc_acc}, [&]( auto& s ) {
+                  s.base -= undone_quote;
+                  s.quote -= quote_order_quote;
+               });
+               //打币
+               undone_base -= quote_order_quote;
+               undone_quote -= undone_quote;
+               is_not_done = false;
+            }
+         }
+         else {
+            is_not_done = false;
+         }
       }
+      eosio::print_f("deal_info--%--%\t",undone_base,undone_quote);
+      //先打币，再改表
+      if ( undone_quote.amount > 0 ) {
+         orderbook_table.modify(base_order,name{},[&]( auto& s ) {
+            s.base = undone_base;
+            s.quote = undone_quote;
+         });
+      }
+      else {
+         //返币
+         orderbook_table.erase(base_order);
+      }
+
    }
 
 

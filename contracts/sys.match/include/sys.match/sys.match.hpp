@@ -74,9 +74,11 @@ namespace match {
       uint64_t get_price() const {
          return quote.amount * 1000000 / base.amount;
       }
+      uint64_t get_maker() const { return maker; }
    };
    typedef eosio::multi_index<"orderbook"_n, order
       ,indexed_by< "pricekey"_n, const_mem_fun<order, uint64_t, &order::get_price>>
+      ,indexed_by< "bymaker"_n, const_mem_fun<order, uint64_t, &order::get_maker>>
    > orderbooks;
 
    struct [[eosio::table, eosio::contract("sys.match")]] trade_scope {
@@ -91,11 +93,13 @@ namespace match {
       indexed_by< "idxkey"_n, const_mem_fun<trade_scope, uint128_t, &trade_scope::by_pair_sym>>
          > orderscopes; 
 
-   //所有的成交放在一起，如何查询自己的成交？
+   //所有的成交放在一起，如何查询自己的成交,通过scope进行区分
    struct [[eosio::table, eosio::contract("sys.match")]] deal_info {
       uint64_t    id;
       uint64_t    order1_id;
       uint64_t    order2_id;
+      account_name exc_account1;
+      account_name exc_account2;
 
       asset           base;
       asset           quote;
@@ -106,18 +110,18 @@ namespace match {
    typedef eosio::multi_index<"deal"_n, deal_info> deals;
 
    struct [[eosio::table, eosio::contract("sys.match")]] record_deal_info {
-      uint32_t    deal_block;
+      uint64_t    id;
       asset       base;
       asset       quote;
-      
+      uint32_t    deal_block;
       uint64_t primary_key() const { return deal_block; }
    };
    typedef eosio::multi_index<"recorddeal"_n, record_deal_info> record_deals;
 
    struct [[eosio::table, eosio::contract("sys.match")]] record_price_info {
       uint64_t        id;
-      asset       base;
-      asset       quote;
+      asset           base;
+      asset           quote;
       uint32_t        start_block;
       uint64_t primary_key() const { return id; }
    };
@@ -166,6 +170,7 @@ namespace match {
       private:
          void checkExcAcc(account_name exc_acc);
          uint64_t get_order_scope(const uint64_t &a,const uint64_t &b);
+         void deal();
 
    };
    /** @}*/ // end of @defgroup eosiomsig eosio.msig
