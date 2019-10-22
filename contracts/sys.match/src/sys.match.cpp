@@ -230,14 +230,28 @@ namespace match {
       check( base_order != orderbook_table.end(),"can not find base order" );
 
       auto base_price = static_cast<int128_t>(base_order->base.amount) * 1000000 / base_order->quote.amount;
-      eosio::print_f("base_price--%----\t",base_price);
+      
 
       orderbooks orderbook_table_quote( _self,scope_quote );
+      auto scopekey_deal = make_trade_128_key(base_order->base.symbol.raw(),base_order->quote.symbol.raw());
 
+      orderscopes order_scope_table(_self,_self.value);
+
+      eosio::print_f("base_price--%----%\t",base_price,scopekey_deal);
+      auto idx_deal = order_scope_table.get_index<"idxkey"_n>();
+      auto itr_deal = idx_deal.find(scopekey_deal);
+      check( itr_deal != idx_deal.end() ,"can not find order scope");
+      auto deal_scope = itr_deal->id;
+      record_deals record_deal_table(_self,deal_scope);
+      auto deal_id = record_deal_table.available_primary_key();
+      eosio::print_f("deal_id----%\t",deal_id);
+
+      auto current_block = eosio::current_block_num();
       bool is_not_done = true;
       uint64_t last_done_id; 
       auto undone_base = base_order->base;
       auto undone_quote = base_order->quote;
+
       while(is_not_done) {
          auto idx = orderbook_table_quote.get_index<"pricekey"_n>();
          auto itr_up = idx.upper_bound( base_price );
@@ -252,10 +266,6 @@ namespace match {
                //修改表格     或者这里不修改，到循环结束再修改
                undone_base -= itr_begin->quote;
                undone_quote -= itr_begin->base;
-               //成交相关处理
-               record_deals record_deal_table();
-
-
                //打币
                idx.erase( itr_begin );
 
@@ -284,9 +294,54 @@ namespace match {
          }
       }
       eosio::print_f("deal_info--%--%\t",undone_base,undone_quote);
+      //记录这次成交相关价格信息
+      record_prices record_price_table(_self,_self.value);
+      auto price_info = record_price_table.find(deal_scope);
+      if ( price_info == record_price_table.end() ) {
+         record_price_table.emplace( name{exc_acc}, [&]( auto& p ){
+            p.id = deal_scope;
+            if ( deal_scope == scope_quote ) {
+               p.base = base_order->quote - undone_quote;
+               p.quote = base_order->base - undone_base;
+            }
+            else {
+               p.quote = base_order->quote - undone_quote;
+               p.base = base_order->base - undone_base;
+            }
+            p.start_block = current_block; 
+         });
+      }
+      else {
+         record_price_table.modify(price_info,name{},[&]( auto& s ) {
+            
+            if ( deal_scope == scope_quote ) {
+               s.base += base_order->quote - undone_quote;
+               s.quote += base_order->base - undone_base;
+            }
+            else {
+               s.quote += base_order->quote - undone_quote;
+               s.base += base_order->base - undone_base;
+            }
+         });
+      }
+
+      //成交相关处理  内存谁来支付的问题     是否有不一致的影响
+      record_deal_table.emplace( name{exc_acc}, [&]( auto& p ) {
+         p.id = deal_id;
+         if ( deal_scope == scope_quote ) {
+            p.base =  base_order->quote - undone_quote;
+            p.quote = base_order->base - undone_base;
+         }
+         else {
+            p.base = base_order->base - undone_base;
+            p.quote =  base_order->quote - undone_quote;
+         }
+
+         p.deal_block = current_block; 
+      });
       //先打币，再改表
       if ( undone_quote.amount > 0 ) {
-         orderbook_table.modify(base_order,name{},[&]( auto& s ) {
+         orderbook_table.modify(base_order,name{exc_acc},[&]( auto& s ) {
             s.base = undone_base;
             s.quote = undone_quote;
          });
