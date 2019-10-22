@@ -199,7 +199,7 @@ namespace match {
       check( itr_base != idx_scope.end() ,"can not find order scope");
 
       // auto timestamp = time_point_sec(uint32_t(current_time() / 1000000ll));
-      auto timestamp = time_point_sec(0);
+      auto current_block_num = eosio::current_block_num();
       orderbooks orderbook_table( _self,itr_base->id );
       orderbook_table.emplace( name{traders}, [&]( auto& p ) {
          p.id = orderbook_table.available_primary_key();
@@ -210,7 +210,7 @@ namespace match {
          p.quote = quote_coin;
          p.orderstatus = 0;
          p.exc_acc = exc_acc;
-         p.timestamp = timestamp;
+         p.order_block_num = current_block_num;
       });
    }
 
@@ -243,8 +243,11 @@ namespace match {
       check( itr_deal != idx_deal.end() ,"can not find order scope");
       auto deal_scope = itr_deal->id;
       record_deals record_deal_table(_self,deal_scope);
-      auto deal_id = record_deal_table.available_primary_key();
-      eosio::print_f("deal_id----%\t",deal_id);
+      auto record_deal_id = record_deal_table.available_primary_key();
+
+      deals deal_table(_self,deal_scope);
+
+      eosio::print_f("deal_id----%\t",record_deal_id);
 
       auto current_block = eosio::current_block_num();
       bool is_not_done = true;
@@ -266,6 +269,21 @@ namespace match {
                //修改表格     或者这里不修改，到循环结束再修改
                undone_base -= itr_begin->quote;
                undone_quote -= itr_begin->base;
+               deal_table.emplace( name{exc_acc}, [&]( auto& p ) {
+                  p.id = deal_table.available_primary_key();
+                  p.order1_id = itr_begin->id;
+                  p.exc_account1 = itr_begin->exc_acc;
+                  p.trader1 = itr_begin->maker;
+
+                  p.order2_id = base_order->id;
+                  p.exc_account2 = base_order->exc_acc;
+                  p.trader2 = base_order->maker;
+
+                  p.base = itr_begin->base;
+                  p.quote = itr_begin->quote;
+                  p.deal_block = current_block;
+
+               });
                //打币
                idx.erase( itr_begin );
 
@@ -282,6 +300,22 @@ namespace match {
                idx.modify(itr_begin, name{exc_acc}, [&]( auto& s ) {
                   s.base -= undone_quote;
                   s.quote -= quote_order_quote;
+               });
+
+               deal_table.emplace( name{exc_acc}, [&]( auto& p ) {
+                  p.id = deal_table.available_primary_key();
+                  p.order1_id = itr_begin->id;
+                  p.exc_account1 = itr_begin->exc_acc;
+                  p.trader1 = itr_begin->maker;
+
+                  p.order2_id = base_order->id;
+                  p.exc_account2 = base_order->exc_acc;
+                  p.trader2 = base_order->maker;
+
+                  p.base = undone_quote;
+                  p.quote = quote_order_quote;
+                  p.deal_block = current_block;
+
                });
                //打币
                undone_base -= quote_order_quote;
@@ -327,7 +361,7 @@ namespace match {
 
       //成交相关处理  内存谁来支付的问题     是否有不一致的影响
       record_deal_table.emplace( name{exc_acc}, [&]( auto& p ) {
-         p.id = deal_id;
+         p.id = record_deal_id;
          if ( deal_scope == scope_quote ) {
             p.base =  base_order->quote - undone_quote;
             p.quote = base_order->base - undone_base;

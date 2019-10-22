@@ -25,6 +25,7 @@ namespace match {
    using eosio::contract;
    using eosio::check;
    using eosio::require_auth;
+   //using eosio::current_block_num;
 
  //自带排序 有问题
    inline uint128_t make_128_key(const uint64_t &a,const uint64_t &b) {
@@ -67,7 +68,7 @@ namespace match {
       asset           base;
       asset           quote;
       uint32_t        orderstatus;
-      time_point_sec  timestamp;
+      uint32_t        order_block_num;
       account_name    exc_acc;
 
       uint64_t primary_key() const { return id; }
@@ -97,9 +98,12 @@ namespace match {
    struct [[eosio::table, eosio::contract("sys.match")]] deal_info {
       uint64_t    id;
       uint64_t    order1_id;
-      uint64_t    order2_id;
       account_name exc_account1;
+      account_name trader1;
+
+      uint64_t    order2_id;
       account_name exc_account2;
+      account_name trader2;
 
       asset           base;
       asset           quote;
@@ -114,7 +118,7 @@ namespace match {
       asset       base;
       asset       quote;
       uint32_t    deal_block;
-      uint64_t primary_key() const { return deal_block; }
+      uint64_t primary_key() const { return id; }
    };
    typedef eosio::multi_index<"recorddeal"_n, record_deal_info> record_deals;
 
@@ -153,6 +157,8 @@ namespace match {
          ACTION openorder(account_name traders, asset base_coin, asset quote_coin,uint64_t trade_pair_id, account_name exc_acc);
          ACTION test(account_name traders);
          ACTION match(uint64_t scope_base,uint64_t base_id,uint64_t scope_quote, account_name exc_acc);
+
+         //ACTION 
 
          [[eosio::on_notify("eosio::transfer")]]
          void onforcetrans( const account_name& from,
