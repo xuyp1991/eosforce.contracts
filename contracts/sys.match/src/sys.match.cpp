@@ -178,11 +178,11 @@ namespace match {
 
       
    }
-//会不会有人open一大堆，但是不转帐？后续对排序等的影响   这个合约最重要的是内存由谁来支付的问题，这个是用户来支付的场景，合约帐户支付或者运营商支付更合理
+//运营商支付，内部调用
    ACTION exchange::openorder(account_name traders, asset base_coin, asset quote_coin,uint64_t trade_pair_id, account_name exc_acc) {
-      require_auth( traders );
+      require_auth( _self );
+      require_auth( exc_acc );
       checkExcAcc(exc_acc);
-     // printf(exc_acc,"---",trade_pair_id);
 
       trading_pairs trading_pairs_tbl(_self,exc_acc);
       auto trade_pair =  trading_pairs_tbl.find(trade_pair_id);
@@ -193,16 +193,16 @@ namespace match {
       
       orderscopes order_scope_table(_self,_self.value);
       uint128_t scopekey_base =  make_128_key(base_coin.symbol.raw(),quote_coin.symbol.raw());
-      eosio::print_f("% ---",scopekey_base);
+      
       auto idx_scope = order_scope_table.get_index<"idxkey"_n>();
       auto itr_base = idx_scope.find(scopekey_base);
       check( itr_base != idx_scope.end() ,"can not find order scope");
 
-      // auto timestamp = time_point_sec(uint32_t(current_time() / 1000000ll));
       auto current_block_num = eosio::current_block_num();
       orderbooks orderbook_table( _self,itr_base->id );
-      orderbook_table.emplace( name{traders}, [&]( auto& p ) {
-         p.id = orderbook_table.available_primary_key();
+      auto order_id = orderbook_table.available_primary_key();
+      orderbook_table.emplace( name{exc_acc}, [&]( auto& p ) {
+         p.id = order_id;
          p.pair_id = trade_pair_id;
          p.maker = traders;
          p.receiver = traders;
@@ -212,46 +212,38 @@ namespace match {
          p.exc_acc = exc_acc;
          p.order_block_num = current_block_num;
       });
+
+      uint128_t scopekey_quote =  make_128_key(quote_coin.symbol.raw(),base_coin.symbol.raw());
+      auto itr_quote = idx_scope.find(scopekey_quote);
+      check( itr_quote != idx_scope.end() ,"can not find order scope");
+
+      match_action temp { 
+         _self,
+         {  { name{exc_acc}, eosforce::active_permission } }  
+      };
+      temp.send( itr_base->id,order_id,itr_quote->id,exc_acc );
    }
 
-   ACTION exchange::test(account_name traders) {
-      orderscopes order_scope_table(_self,_self.value);
-      auto itr = order_scope_table.begin();
-      while (itr != order_scope_table.end()) {
-         eosio::print_f("%----",itr->by_pair_sym());
-         itr++;
-      }
-   }
 //成交数据处理，费用处理
 //成交，一定要满足一定条件再落，毕竟占用内存比较多，而且内存的支付由谁来？
    ACTION exchange::match(uint64_t scope_base,uint64_t base_id,uint64_t scope_quote, account_name exc_acc) {
+      require_auth( exc_acc );
       orderbooks orderbook_table( _self,scope_base );
       auto base_order = orderbook_table.find(base_id);
       check( base_order != orderbook_table.end(),"can not find base order" );
 
       auto base_price = static_cast<int128_t>(base_order->base.amount) * 1000000 / base_order->quote.amount;
-      
-
       orderbooks orderbook_table_quote( _self,scope_quote );
       auto scopekey_deal = make_trade_128_key(base_order->base.symbol.raw(),base_order->quote.symbol.raw());
 
       orderscopes order_scope_table(_self,_self.value);
-
-      eosio::print_f("base_price--%----%\t",base_price,scopekey_deal);
       auto idx_deal = order_scope_table.get_index<"idxkey"_n>();
       auto itr_deal = idx_deal.find(scopekey_deal);
       check( itr_deal != idx_deal.end() ,"can not find order scope");
       auto deal_scope = itr_deal->id;
-      record_deals record_deal_table(_self,deal_scope);
-      auto record_deal_id = record_deal_table.available_primary_key();
-
-      deals deal_table(_self,deal_scope);
-
-      eosio::print_f("deal_id----%\t",record_deal_id);
 
       auto current_block = eosio::current_block_num();
       bool is_not_done = true;
-      uint64_t last_done_id; 
       auto undone_base = base_order->base;
       auto undone_quote = base_order->quote;
 
@@ -262,28 +254,17 @@ namespace match {
          if ( itr_begin != itr_up ) {
             //deal
             auto quote_price = static_cast<int128_t>(itr_begin->quote.amount) * 1000000 / itr_begin->base.amount;
-            eosio::print_f("quote_price--%--%--%--%--%--%\t",quote_price,itr_begin->base,itr_begin->quote,itr_begin->id,undone_base,undone_quote);
+            //eosio::print_f("quote_price--%--%--%--%--%--%\t",quote_price,itr_begin->base,itr_begin->quote,itr_begin->id,undone_base,undone_quote);
+            order_deal_info order_deal_base = order_deal_info{itr_begin->id,itr_begin->exc_acc,itr_begin->maker};
+            order_deal_info order_deal_quote = order_deal_info{base_order->id,base_order->exc_acc,base_order->maker};
             //部分成交
             if ( itr_begin->base <= undone_quote ) {
-               last_done_id = itr_begin->id;
                //修改表格     或者这里不修改，到循环结束再修改
                undone_base -= itr_begin->quote;
                undone_quote -= itr_begin->base;
-               deal_table.emplace( name{exc_acc}, [&]( auto& p ) {
-                  p.id = deal_table.available_primary_key();
-                  p.order1_id = itr_begin->id;
-                  p.exc_account1 = itr_begin->exc_acc;
-                  p.trader1 = itr_begin->maker;
 
-                  p.order2_id = base_order->id;
-                  p.exc_account2 = base_order->exc_acc;
-                  p.trader2 = base_order->maker;
+               record_deal_info(deal_scope,order_deal_base,order_deal_quote,itr_begin->base,itr_begin->quote,current_block,exc_acc);
 
-                  p.base = itr_begin->base;
-                  p.quote = itr_begin->quote;
-                  p.deal_block = current_block;
-
-               });
                //打币
                idx.erase( itr_begin );
 
@@ -293,7 +274,6 @@ namespace match {
             }
             //全部成交  quote单有剩余
             else {
-               last_done_id = itr_begin->id;
                //base 还是quote要考虑一下
                auto quote_order_quote = asset( static_cast<int128_t>(undone_quote.amount) * static_cast<int128_t>(itr_begin->quote.amount) 
                   / itr_begin->base.amount,itr_begin->quote.symbol );
@@ -301,22 +281,7 @@ namespace match {
                   s.base -= undone_quote;
                   s.quote -= quote_order_quote;
                });
-
-               deal_table.emplace( name{exc_acc}, [&]( auto& p ) {
-                  p.id = deal_table.available_primary_key();
-                  p.order1_id = itr_begin->id;
-                  p.exc_account1 = itr_begin->exc_acc;
-                  p.trader1 = itr_begin->maker;
-
-                  p.order2_id = base_order->id;
-                  p.exc_account2 = base_order->exc_acc;
-                  p.trader2 = base_order->maker;
-
-                  p.base = undone_quote;
-                  p.quote = quote_order_quote;
-                  p.deal_block = current_block;
-
-               });
+               record_deal_info(deal_scope,order_deal_base,order_deal_quote,undone_quote,quote_order_quote,current_block,exc_acc);
                //打币
                undone_base -= quote_order_quote;
                undone_quote -= undone_quote;
@@ -327,52 +292,19 @@ namespace match {
             is_not_done = false;
          }
       }
-      eosio::print_f("deal_info--%--%\t",undone_base,undone_quote);
+//      eosio::print_f("deal_info--%--%\t",undone_base,undone_quote);
       //记录这次成交相关价格信息
-      record_prices record_price_table(_self,_self.value);
-      auto price_info = record_price_table.find(deal_scope);
-      if ( price_info == record_price_table.end() ) {
-         record_price_table.emplace( name{exc_acc}, [&]( auto& p ){
-            p.id = deal_scope;
-            if ( deal_scope == scope_quote ) {
-               p.base = base_order->quote - undone_quote;
-               p.quote = base_order->base - undone_base;
-            }
-            else {
-               p.quote = base_order->quote - undone_quote;
-               p.base = base_order->base - undone_base;
-            }
-            p.start_block = current_block; 
-         });
+      if( deal_scope == scope_quote ) {
+         auto deal_base = base_order->quote - undone_quote;
+         auto deal_quote = base_order->base - undone_base;
+         record_price_info(deal_scope,deal_base,deal_quote,current_block,exc_acc);
       }
       else {
-         record_price_table.modify(price_info,name{},[&]( auto& s ) {
-            
-            if ( deal_scope == scope_quote ) {
-               s.base += base_order->quote - undone_quote;
-               s.quote += base_order->base - undone_base;
-            }
-            else {
-               s.quote += base_order->quote - undone_quote;
-               s.base += base_order->base - undone_base;
-            }
-         });
+         auto deal_quote = base_order->quote - undone_quote;
+         auto deal_base = base_order->base - undone_base;
+         record_price_info(deal_scope,deal_base,deal_quote,current_block,exc_acc);
       }
-
-      //成交相关处理  内存谁来支付的问题     是否有不一致的影响
-      record_deal_table.emplace( name{exc_acc}, [&]( auto& p ) {
-         p.id = record_deal_id;
-         if ( deal_scope == scope_quote ) {
-            p.base =  base_order->quote - undone_quote;
-            p.quote = base_order->base - undone_base;
-         }
-         else {
-            p.base = base_order->base - undone_base;
-            p.quote =  base_order->quote - undone_quote;
-         }
-
-         p.deal_block = current_block; 
-      });
+      
       //先打币，再改表
       if ( undone_quote.amount > 0 ) {
          orderbook_table.modify(base_order,name{exc_acc},[&]( auto& s ) {
@@ -385,6 +317,47 @@ namespace match {
          orderbook_table.erase(base_order);
       }
 
+   }
+
+   void exchange::record_deal_info(const uint64_t &deal_scope,const order_deal_info &deal_base,const order_deal_info &deal_quote,
+                                    const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer ){
+      deals deal_table(_self,deal_scope);
+      deal_table.emplace( name{ram_payer}, [&]( auto& p ) {
+         p.id = deal_table.available_primary_key();
+         p.order_base = deal_base;
+         p.order_quote = deal_quote;
+        
+         p.base = base;
+         p.quote = quote;
+         p.deal_block = current_block;
+      });
+   }
+
+   void exchange::record_price_info(const uint64_t &deal_scope,const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer) {
+      record_deals record_deal_table(_self,deal_scope);
+      record_deal_table.emplace( name{ram_payer}, [&]( auto& p ) {
+         p.id = record_deal_table.available_primary_key();
+         p.base = base;
+         p.quote =  quote;
+         p.deal_block = current_block; 
+      });
+
+      record_prices record_price_table(_self,_self.value);
+      auto price_info = record_price_table.find(deal_scope);
+      if ( price_info == record_price_table.end() ) {
+         record_price_table.emplace( name{ram_payer}, [&]( auto& p ){
+            p.id = deal_scope;
+            p.quote = quote;
+            p.base = base;
+            p.start_block = current_block; 
+         });
+      }
+      else {
+         record_price_table.modify(price_info,name{},[&]( auto& s ) {
+            s.base += base;
+            s.quote += quote;
+         });
+      }
    }
 
 

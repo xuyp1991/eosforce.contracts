@@ -94,16 +94,17 @@ namespace match {
       indexed_by< "idxkey"_n, const_mem_fun<trade_scope, uint128_t, &trade_scope::by_pair_sym>>
          > orderscopes; 
 
+   struct order_deal_info{
+      uint64_t    order_id;
+      account_name exc_acc;
+      account_name trader;
+   };
+
    //所有的成交放在一起，如何查询自己的成交,通过scope进行区分
    struct [[eosio::table, eosio::contract("sys.match")]] deal_info {
       uint64_t    id;
-      uint64_t    order1_id;
-      account_name exc_account1;
-      account_name trader1;
-
-      uint64_t    order2_id;
-      account_name exc_account2;
-      account_name trader2;
+      order_deal_info order_base;
+      order_deal_info order_quote;
 
       asset           base;
       asset           quote;
@@ -155,10 +156,7 @@ namespace match {
 
          ACTION makeorder(account_name traders,asset base,asset quote,uint64_t trade_pair_id, account_name exc_acc);
          ACTION openorder(account_name traders, asset base_coin, asset quote_coin,uint64_t trade_pair_id, account_name exc_acc);
-         ACTION test(account_name traders);
          ACTION match(uint64_t scope_base,uint64_t base_id,uint64_t scope_quote, account_name exc_acc);
-
-         //ACTION 
 
          [[eosio::on_notify("eosio::transfer")]]
          void onforcetrans( const account_name& from,
@@ -173,11 +171,20 @@ namespace match {
                const asset quantity,
                const string memo );
 
+         using regex_action            = eosio::action_wrapper<"regex"_n,           &exchange::regex>;
+         using createtrade_action      = eosio::action_wrapper<"createtrade"_n,     &exchange::createtrade>;
+         using feecreate_action        = eosio::action_wrapper<"feecreate"_n,       &exchange::feecreate>;
+         using setfee_action           = eosio::action_wrapper<"setfee"_n,          &exchange::setfee>;
+         using makeorder_action        = eosio::action_wrapper<"makeorder"_n,       &exchange::makeorder>;
+         using openorder_action        = eosio::action_wrapper<"openorder"_n,       &exchange::openorder>;
+         using match_action            = eosio::action_wrapper<"match"_n,           &exchange::match>;
+
       private:
          void checkExcAcc(account_name exc_acc);
          uint64_t get_order_scope(const uint64_t &a,const uint64_t &b);
-         void deal();
-
+         void record_deal_info(const uint64_t &deal_scope,const order_deal_info &deal_base,const order_deal_info &deal_quote,
+                              const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer );
+         void record_price_info(const uint64_t &deal_scope,const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer);
    };
    /** @}*/ // end of @defgroup eosiomsig eosio.msig
 } /// namespace eosio
