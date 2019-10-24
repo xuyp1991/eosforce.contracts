@@ -4,7 +4,10 @@
  */
 
 #include <sys.match/sys.match.hpp>
+#include <sys.match/match_define.hpp>
 #include <eosio/system.hpp>
+#include <../../eosio.system/include/eosio.system.hpp>
+#include <../../eosio.token/include/eosio.token/eosio.token.hpp>
 
 namespace match {
    void exchange::checkExcAcc(account_name exc_acc) {
@@ -24,33 +27,8 @@ namespace match {
       return itr->id;
    }
 
-   // void exchange::match(const uint64_t &order_scope,const uint64_t &order_id,const account_name &exc_acc ) {
-   //    orderbook order_book_table(_self,order_scope);
-   //    auto order = order_book_table.find(order_id);
-   //    check( order != order_book_table.end(),"can not find the order" );
-   //    //价格获取 小数点后6位
-   //    auto price = order->base.coin.amount * 1000000 / order->quote.coin.amount;
-   //    auto relative_price = order->quote.coin.amount * 1000000 / order->base.coin.amount;
-   //    //选取相对的订单进行匹配
-   //    auto relative_order_scope = get_order_scope(order->quote.coin.symbol.raw(),order->base.coin.symbol.raw()); 
-   //    orderbook relative_order_book_table(_self,relative_order_scope);
-   //    //需要打印出来才能知道效果
-   //    auto idx = relative_order_book_table.get_index<"pricekey"_n>();
-   //    auto itr_low = idx.lower_bound( price );
-   //    auto itr_up = idx.upper_bound( price );
-   //    if ( itr_low != idx.end() ) {
-   //       printf(itr_low->id);
-   //    }
-   //    else {
-   //       printf("not found");
-   //    }
-   //    //match成功则执行done命令，done执行成交相关指令
-
-   // }
-
    ACTION exchange::regex(account_name exc_acc){
       require_auth( exc_acc );
-      printf("-----------------test-----------------------");
       //押金以后再考虑
       //const asset min_staked(10000000,CORE_SYMBOL);
       
@@ -67,14 +45,15 @@ namespace match {
 //这个地方出问题了
    ACTION exchange::createtrade( asset base_coin, asset quote_coin, account_name exc_acc) {
       require_auth( exc_acc );
-      printf("-----------------test-----------------------");
       checkExcAcc(exc_acc);
       check(base_coin.symbol.raw() != quote_coin.symbol.raw(), "base coin and quote coin must be different");
       trading_pairs trading_pairs_table(_self,exc_acc);
 
-      uint128_t idxkey = make_trade_128_key(base_coin.symbol.raw(), quote_coin.symbol.raw());
+      uint128_t idxkey = make_128_key(base_coin.symbol.raw(), quote_coin.symbol.raw());//好像是不行
+     // eosio::print_f("%---\t",idxkey);
       auto idx = trading_pairs_table.get_index<"idxkey"_n>();
       auto itr = idx.find(idxkey);
+
       check(itr == idx.end(), "trading pair already created");
 
       auto pk = trading_pairs_table.available_primary_key();
@@ -87,9 +66,8 @@ namespace match {
       });
 
       //插入order scope  需要插入两个
-
       orderscopes order_scope_table(_self,_self.value);
-      uint128_t scopekey_base =  make_128_key(base_coin.symbol.raw(),quote_coin.symbol.raw());
+      uint128_t scopekey_base =  make_128_key(base_coin.symbol.raw(),quote_coin.symbol.raw(),base_coin.symbol.raw());
       auto idx_scope = order_scope_table.get_index<"idxkey"_n>();
       auto itr_base = idx_scope.find(scopekey_base);
       if ( itr_base == idx_scope.end() ) {
@@ -98,10 +76,11 @@ namespace match {
             p.id = orderscope;
             p.base = base_coin;
             p.quote = quote_coin;
+            p.coin = base_coin;
          });
       }
 
-      uint128_t scopekey_quote =  make_128_key(quote_coin.symbol.raw(),base_coin.symbol.raw());
+      uint128_t scopekey_quote =  make_128_key(quote_coin.symbol.raw(),base_coin.symbol.raw(),base_coin.symbol.raw());
       auto itr_quote = idx_scope.find(scopekey_quote);
       if ( itr_quote == idx_scope.end() ) {
          auto orderscope = order_scope_table.available_primary_key();
@@ -109,6 +88,7 @@ namespace match {
             p.id = orderscope;
             p.base = quote_coin;
             p.quote = base_coin;
+            p.coin = base_coin;
          });
       }
    }
@@ -145,7 +125,7 @@ namespace match {
       });
 
    }
-
+//转帐eosio 代币
    void exchange::onforcetrans( const account_name& from,
                                  const account_name& to,
                                  const asset& quantity,
@@ -153,18 +133,36 @@ namespace match {
       if ( from == _self.value ) {
          return ;
       }
+      
+      transfer_memo trans(memo);
+      if ( trans.type == match_order ) {
+         openorder_action  temp { 
+            _self,
+            {  { name{trans.exc_acc}, eosforce::active_permission },{ get_self(), eosforce::active_permission } }  
+         };
+         temp.send( from,quantity,trans.dest,trans.pair_id,trans.exc_acc );
+      }
+      
    }
-
-   void exchange::onrelaytrans( const account_name from,
-                                 const account_name to,
-                                 const name chain,
-                                 const asset quantity,
-                                 const string memo ) {
+//转帐其他代币
+   void exchange::ontokentrans( const account_name& from,
+                                 const account_name& to,
+                                 const asset& quantity,
+                                 const string& memo ) {
       if ( from == _self.value ) {
          return ;
       }
-   }
 
+      transfer_memo trans(memo);
+      if ( trans.type == match_order ) {
+         openorder_action  temp { 
+            _self,
+            {  { name{trans.exc_acc}, eosforce::active_permission },{ get_self(), eosforce::active_permission } }  
+         };
+         temp.send( from,quantity,trans.dest,trans.pair_id,trans.exc_acc );
+      }
+   }
+//to be delete
    ACTION exchange::makeorder(account_name traders,asset base,asset quote,uint64_t trade_pair_id, account_name exc_acc) {
       require_auth( traders );
       checkExcAcc(exc_acc);
@@ -192,7 +190,7 @@ namespace match {
          ||( base_coin.symbol == trade_pair->quote.symbol && quote_coin.symbol == trade_pair->base.symbol ) ,"the order do not match the tradepair" );
       
       orderscopes order_scope_table(_self,_self.value);
-      uint128_t scopekey_base =  make_128_key(base_coin.symbol.raw(),quote_coin.symbol.raw());
+      uint128_t scopekey_base =  make_128_key(base_coin.symbol.raw(),quote_coin.symbol.raw(),trade_pair->base.symbol.raw());
       
       auto idx_scope = order_scope_table.get_index<"idxkey"_n>();
       auto itr_base = idx_scope.find(scopekey_base);
@@ -208,12 +206,14 @@ namespace match {
          p.receiver = traders;
          p.base = base_coin;
          p.quote = quote_coin;
+         p.undone_base = base_coin;
+         p.undone_quote = quote_coin;
          p.orderstatus = 0;
          p.exc_acc = exc_acc;
          p.order_block_num = current_block_num;
       });
 
-      uint128_t scopekey_quote =  make_128_key(quote_coin.symbol.raw(),base_coin.symbol.raw());
+      uint128_t scopekey_quote =  make_128_key(quote_coin.symbol.raw(),base_coin.symbol.raw(),trade_pair->base.symbol.raw());
       auto itr_quote = idx_scope.find(scopekey_quote);
       check( itr_quote != idx_scope.end() ,"can not find order scope");
 
@@ -225,48 +225,61 @@ namespace match {
    }
 
 //成交数据处理，费用处理
-//成交，一定要满足一定条件再落，毕竟占用内存比较多，而且内存的支付由谁来？
+//成交，一定要满足一定条件再落，毕竟占用内存比较多，而且内存的支付由谁来？吃单有问题，如果吃了比自己小的单子，是否就会改变自己的价格？这个问题明天再说
    ACTION exchange::match(uint64_t scope_base,uint64_t base_id,uint64_t scope_quote, account_name exc_acc) {
       require_auth( exc_acc );
       orderbooks orderbook_table( _self,scope_base );
       auto base_order = orderbook_table.find(base_id);
       check( base_order != orderbook_table.end(),"can not find base order" );
 
+      orderscopes order_scope_table(_self,_self.value);
+      auto scope_order = order_scope_table.find(scope_base);
+      check( scope_order != order_scope_table.end(),"can not find order scope" );
+      auto coin = scope_order->coin;
+      
+
       auto base_price = static_cast<int128_t>(base_order->base.amount) * 1000000 / base_order->quote.amount;
       orderbooks orderbook_table_quote( _self,scope_quote );
-      auto scopekey_deal = make_trade_128_key(base_order->base.symbol.raw(),base_order->quote.symbol.raw());
-
-      orderscopes order_scope_table(_self,_self.value);
-      auto idx_deal = order_scope_table.get_index<"idxkey"_n>();
-      auto itr_deal = idx_deal.find(scopekey_deal);
-      check( itr_deal != idx_deal.end() ,"can not find order scope");
-      auto deal_scope = itr_deal->id;
+      auto deal_scope = scope_base > scope_quote ? scope_base : scope_quote;
 
       auto current_block = eosio::current_block_num();
       bool is_not_done = true;
-      auto undone_base = base_order->base;
-      auto undone_quote = base_order->quote;
+      auto undone_base = base_order->undone_base;
+      auto undone_quote = base_order->undone_quote;
+
+      auto done_base = asset(0,undone_base.symbol);
+      auto done_quote = asset(0,undone_quote.symbol);
+
+      bool base_coin = coin.symbol.raw() == undone_base.symbol.raw();
 
       while(is_not_done) {
          auto idx = orderbook_table_quote.get_index<"pricekey"_n>();
          auto itr_up = idx.upper_bound( base_price );
          auto itr_begin = idx.cbegin();
+
+         if ( base_coin ) {
+            undone_quote = asset(static_cast<int64_t>(static_cast<uint128_t>(undone_base.amount) * base_order->quote.amount / base_order->base.amount),undone_quote.symbol);
+         }
+         else {
+            undone_base = asset(static_cast<int64_t>(static_cast<uint128_t>(undone_quote.amount) * base_order->base.amount / base_order->quote.amount),undone_base.symbol);
+         }
+
          if ( itr_begin != itr_up ) {
-            //deal
-            auto quote_price = static_cast<int128_t>(itr_begin->quote.amount) * 1000000 / itr_begin->base.amount;
-            //eosio::print_f("quote_price--%--%--%--%--%--%\t",quote_price,itr_begin->base,itr_begin->quote,itr_begin->id,undone_base,undone_quote);
+
             order_deal_info order_deal_base = order_deal_info{itr_begin->id,itr_begin->exc_acc,itr_begin->maker};
             order_deal_info order_deal_quote = order_deal_info{base_order->id,base_order->exc_acc,base_order->maker};
             //部分成交
-            if ( itr_begin->base <= undone_quote ) {
+            if ( ( base_coin && itr_begin->undone_quote <= undone_base ) || ( !base_coin && itr_begin->undone_base <= undone_quote) ) {
                //修改表格     或者这里不修改，到循环结束再修改
-               undone_base -= itr_begin->quote;
-               undone_quote -= itr_begin->base;
+               undone_base -= itr_begin->undone_quote;
+               undone_quote -= itr_begin->undone_base;
 
-               record_deal_info(deal_scope,order_deal_base,order_deal_quote,itr_begin->base,itr_begin->quote,current_block,exc_acc);
-
-               //打币
-               idx.erase( itr_begin );
+               done_base += itr_begin->undone_quote;
+               done_quote += itr_begin->undone_base;
+               record_deal_info(deal_scope,order_deal_base,order_deal_quote,itr_begin->undone_base,itr_begin->undone_quote,current_block,exc_acc);
+               //打币 给itr_begin->receiver 打币 itr_begin->undone_quote
+               transfer_to_other(itr_begin->undone_quote,itr_begin->receiver);
+               // idx.erase( itr_begin );
 
                if ( undone_quote.amount == 0 ) {
                   is_not_done = false;
@@ -275,16 +288,23 @@ namespace match {
             //全部成交  quote单有剩余
             else {
                //base 还是quote要考虑一下
-               auto quote_order_quote = asset( static_cast<int128_t>(undone_quote.amount) * static_cast<int128_t>(itr_begin->quote.amount) 
-                  / itr_begin->base.amount,itr_begin->quote.symbol );
+               auto quote_order_quote = asset( static_cast<int128_t>(undone_quote.amount) * static_cast<int128_t>(itr_begin->undone_quote.amount) 
+                  / itr_begin->undone_base.amount,itr_begin->undone_quote.symbol );
+               //打币 给itr_begin->receiver 打币 quote_order_quote
+               transfer_to_other(quote_order_quote,itr_begin->receiver);
+               //quote base coin 需要使用  以我的价格为准的，不需要修改
                idx.modify(itr_begin, name{exc_acc}, [&]( auto& s ) {
-                  s.base -= undone_quote;
-                  s.quote -= quote_order_quote;
+                  s.undone_base -= undone_quote;
+                  s.undone_quote -= quote_order_quote;
                });
                record_deal_info(deal_scope,order_deal_base,order_deal_quote,undone_quote,quote_order_quote,current_block,exc_acc);
-               //打币
+               
+               done_base += quote_order_quote;
+               done_quote += undone_quote;
+
                undone_base -= quote_order_quote;
                undone_quote -= undone_quote;
+
                is_not_done = false;
             }
          }
@@ -292,28 +312,44 @@ namespace match {
             is_not_done = false;
          }
       }
-//      eosio::print_f("deal_info--%--%\t",undone_base,undone_quote);
-      //记录这次成交相关价格信息
-      if( deal_scope == scope_quote ) {
-         auto deal_base = base_order->quote - undone_quote;
-         auto deal_quote = base_order->base - undone_base;
-         record_price_info(deal_scope,deal_base,deal_quote,current_block,exc_acc);
-      }
-      else {
-         auto deal_quote = base_order->quote - undone_quote;
-         auto deal_base = base_order->base - undone_base;
-         record_price_info(deal_scope,deal_base,deal_quote,current_block,exc_acc);
+
+
+      
+      //先打币，给base_order->receiver 打币done_quote，再改表
+      if ( done_quote.amount > 0 ) {
+         //记录这次成交相关价格信息
+         if( deal_scope == scope_quote ) {
+            record_price_info(deal_scope,done_base,done_quote,current_block,exc_acc);
+         }
+         else {
+            record_price_info(deal_scope,done_quote,done_base,current_block,exc_acc);
+         }
+
+         transfer_to_other(done_quote,base_order->receiver);
       }
       
-      //先打币，再改表
-      if ( undone_quote.amount > 0 ) {
+      if ( ( base_coin && undone_base.amount > 0 ) || ( !base_coin && undone_quote.amount > 0 ) ) {
+         
+         if ( base_coin ) {
+            undone_quote = asset(static_cast<int64_t>(static_cast<uint128_t>(undone_base.amount) * base_order->quote.amount / base_order->base.amount),undone_quote.symbol);
+         }
+         else {
+            undone_base = asset(static_cast<int64_t>(static_cast<uint128_t>(undone_quote.amount) * base_order->base.amount / base_order->quote.amount),undone_base.symbol);
+         }
+
          orderbook_table.modify(base_order,name{exc_acc},[&]( auto& s ) {
-            s.base = undone_base;
-            s.quote = undone_quote;
+            s.undone_base = undone_base;
+            s.undone_quote = undone_quote;
          });
       }
       else {
          //返币
+         if ( base_coin && undone_quote.amount > 0 ) {
+            transfer_to_other(undone_quote,base_order->receiver);
+         }
+         else if( !base_coin && undone_base.amount > 0 ){
+            transfer_to_other(undone_base,base_order->receiver);
+         }
          orderbook_table.erase(base_order);
       }
 
@@ -334,6 +370,7 @@ namespace match {
    }
 
    void exchange::record_price_info(const uint64_t &deal_scope,const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer) {
+      eosio::print_f("%---%---%---\n",deal_scope,base,quote);
       record_deals record_deal_table(_self,deal_scope);
       record_deal_table.emplace( name{ram_payer}, [&]( auto& p ) {
          p.id = record_deal_table.available_primary_key();
@@ -357,6 +394,24 @@ namespace match {
             s.base += base;
             s.quote += quote;
          });
+      }
+   }
+
+   void exchange::transfer_to_other(const asset& quantity,const account_name& to) {
+      //return ;
+      if ( quantity.symbol == CORE_SYMBOL ) {
+         eosio::transfer_action temp { 
+            eosforce::system_account, 
+            {  { get_self(), eosforce::active_permission } } 
+         };
+         temp.send( get_self().value, to, quantity, std::string( " match order deal transfer coin" ) );
+      }
+      else {
+         eosio::transfer_action temp { 
+            eosforce::token_account, 
+            {  { get_self(), eosforce::active_permission } } 
+         };
+         temp.send( get_self().value, to, quantity, std::string( " match order deal transfer coin" ) );
       }
    }
 

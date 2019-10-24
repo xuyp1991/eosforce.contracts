@@ -37,6 +37,29 @@ namespace match {
       return uint128_t(b)<<64 | a;
    }
 
+   inline uint128_t make_128_key(const uint64_t &a,const uint64_t &b,const uint64_t &c) {
+      if ( a == c ) return uint128_t(a)<<64 | b | 0x10;
+      return uint128_t(a)<<64 | b;
+   }
+
+   inline uint128_t make_trade_128_key(const uint64_t &a,const uint64_t &b,const uint64_t &c) {
+      eosio::print_f("%--%--%-\t",a,b,c);
+      if (a < b) {
+         if ( a == c ) {
+            eosio::print_f("==\t");
+            return uint128_t(a)<<64 | b | 0x10;
+         } 
+         eosio::print_f("0x10\t");
+         return uint128_t(a)<<64 | b;
+      }
+      if ( a == c ) {
+         eosio::print_f("==\t");
+         return uint128_t(b)<<64 | a | 0x10; 
+      } 
+      eosio::print_f("0x10\t");
+      return uint128_t(b)<<64 | a;
+   }
+
    struct [[eosio::table, eosio::contract("sys.match")]] trading_pair{
       uint64_t id;
       
@@ -47,7 +70,7 @@ namespace match {
       int64_t     fee_id;
       
       uint64_t primary_key() const { return id; }
-      uint128_t by_pair_sym() const { return make_trade_128_key( base.symbol.raw() , quote.symbol.raw() ); }
+      uint128_t by_pair_sym() const { return make_trade_128_key( base.symbol.raw() , quote.symbol.raw(),base.symbol.raw() ); }
    };
    typedef eosio::multi_index<"pairs"_n, trading_pair,
       indexed_by< "idxkey"_n, const_mem_fun<trading_pair, uint128_t, &trading_pair::by_pair_sym>>
@@ -67,6 +90,8 @@ namespace match {
       account_name    receiver;
       asset           base;
       asset           quote;
+      asset           undone_base;
+      asset           undone_quote;
       uint32_t        orderstatus;
       uint32_t        order_block_num;
       account_name    exc_acc;
@@ -86,9 +111,11 @@ namespace match {
       uint64_t id;
       asset base;
       asset quote;
+
+      asset coin;
       
       uint64_t primary_key() const { return id; }
-      uint128_t by_pair_sym() const { return make_128_key( base.symbol.raw() , quote.symbol.raw() ); }
+      uint128_t by_pair_sym() const { return make_128_key( base.symbol.raw() , quote.symbol.raw(),coin.symbol.raw() ); }
    };
    typedef eosio::multi_index<"orderscope"_n, trade_scope,
       indexed_by< "idxkey"_n, const_mem_fun<trade_scope, uint128_t, &trade_scope::by_pair_sym>>
@@ -165,11 +192,10 @@ namespace match {
                          const string& memo );
 
          [[eosio::on_notify("eosio.token::transfer")]]
-         void onrelaytrans( const account_name from,
-               const account_name to,
-               const name chain,
-               const asset quantity,
-               const string memo );
+         void ontokentrans( const account_name& from,
+               const account_name& to,
+               const asset& quantity,
+               const string& memo );
 
          using regex_action            = eosio::action_wrapper<"regex"_n,           &exchange::regex>;
          using createtrade_action      = eosio::action_wrapper<"createtrade"_n,     &exchange::createtrade>;
@@ -185,6 +211,8 @@ namespace match {
          void record_deal_info(const uint64_t &deal_scope,const order_deal_info &deal_base,const order_deal_info &deal_quote,
                               const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer );
          void record_price_info(const uint64_t &deal_scope,const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer);
+         //给其他人打币
+         void transfer_to_other(const asset& quantity,const account_name& to);
    };
    /** @}*/ // end of @defgroup eosiomsig eosio.msig
 } /// namespace eosio
