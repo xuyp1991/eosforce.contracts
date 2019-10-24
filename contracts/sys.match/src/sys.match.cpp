@@ -16,17 +16,6 @@ namespace match {
       check(itr1 != exc_tbl.end(), "exechange account has not been registered!");
    }
 
-   uint64_t exchange::get_order_scope(const uint64_t &a,const uint64_t &b) {
-      orderscopes order_scope_table(_self,_self.value);
-      uint128_t scopekey =  make_128_key(a,b);
-      auto idx = order_scope_table.get_index<"idxkey"_n>();
-      auto itr = idx.find(scopekey);
-      
-      check(itr != idx.end(),"can not find scope");
-
-      return itr->id;
-   }
-
    ACTION exchange::regex(account_name exc_acc){
       require_auth( exc_acc );
       //押金以后再考虑
@@ -50,7 +39,6 @@ namespace match {
       trading_pairs trading_pairs_table(_self,exc_acc);
 
       uint128_t idxkey = make_128_key(base_coin.symbol.raw(), quote_coin.symbol.raw());//好像是不行
-     // eosio::print_f("%---\t",idxkey);
       auto idx = trading_pairs_table.get_index<"idxkey"_n>();
       auto itr = idx.find(idxkey);
 
@@ -125,6 +113,16 @@ namespace match {
       });
 
    }
+   //取消订单
+   ACTION exchange::cancelorder( uint64_t orderscope,uint64_t orderid) {
+      orderbooks orderbook_table( _self,orderscope );
+      auto order_info = orderbook_table.find(orderid);
+      check( order_info != orderbook_table.end(),"can not find the order");
+
+      require_auth( order_info->maker );
+      transfer_to_other(order_info->undone_base,order_info->maker);
+      orderbook_table.erase(order_info);
+   }
 //转帐eosio 代币
    void exchange::onforcetrans( const account_name& from,
                                  const account_name& to,
@@ -162,20 +160,7 @@ namespace match {
          temp.send( from,quantity,trans.dest,trans.pair_id,trans.exc_acc );
       }
    }
-//to be delete
-   ACTION exchange::makeorder(account_name traders,asset base,asset quote,uint64_t trade_pair_id, account_name exc_acc) {
-      require_auth( traders );
-      checkExcAcc(exc_acc);
 
-      trading_pairs trading_pairs_table(_self,exc_acc);
-      auto trade_pair =  trading_pairs_table.find(trade_pair_id);
-      check(trade_pair != trading_pairs_table.end(), "can not find the trade pair");
-
-      check( ( base == trade_pair->base && quote == trade_pair->quote )
-         ||( base == trade_pair->quote && quote == trade_pair->base ) ,"the order do not match the tradepair" );
-
-      
-   }
 //运营商支付，内部调用
    ACTION exchange::openorder(account_name traders, asset base_coin, asset quote_coin,uint64_t trade_pair_id, account_name exc_acc) {
       require_auth( _self );
@@ -370,7 +355,6 @@ namespace match {
    }
 
    void exchange::record_price_info(const uint64_t &deal_scope,const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer) {
-      eosio::print_f("%---%---%---\n",deal_scope,base,quote);
       record_deals record_deal_table(_self,deal_scope);
       record_deal_table.emplace( name{ram_payer}, [&]( auto& p ) {
          p.id = record_deal_table.available_primary_key();
@@ -398,7 +382,6 @@ namespace match {
    }
 
    void exchange::transfer_to_other(const asset& quantity,const account_name& to) {
-      //return ;
       if ( quantity.symbol == CORE_SYMBOL ) {
          eosio::transfer_action temp { 
             eosforce::system_account, 

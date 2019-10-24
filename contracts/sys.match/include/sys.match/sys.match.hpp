@@ -43,20 +43,15 @@ namespace match {
    }
 
    inline uint128_t make_trade_128_key(const uint64_t &a,const uint64_t &b,const uint64_t &c) {
-      eosio::print_f("%--%--%-\t",a,b,c);
       if (a < b) {
          if ( a == c ) {
-            eosio::print_f("==\t");
             return uint128_t(a)<<64 | b | 0x10;
          } 
-         eosio::print_f("0x10\t");
          return uint128_t(a)<<64 | b;
       }
       if ( a == c ) {
-         eosio::print_f("==\t");
          return uint128_t(b)<<64 | a | 0x10; 
       } 
-      eosio::print_f("0x10\t");
       return uint128_t(b)<<64 | a;
    }
 
@@ -127,7 +122,6 @@ namespace match {
       account_name trader;
    };
 
-   //所有的成交放在一起，如何查询自己的成交,通过scope进行区分
    struct [[eosio::table, eosio::contract("sys.match")]] deal_info {
       uint64_t    id;
       order_deal_info order_base;
@@ -172,6 +166,14 @@ namespace match {
    };
    typedef eosio::multi_index<"tradefee"_n, fee_info> trade_fees;
 
+   struct [[eosio::table, eosio::contract("sys.match")]]  deposit_info {
+      asset balance;
+      asset frozen_balance;
+      
+      uint64_t primary_key() const { return balance.symbol.raw(); }
+   };
+   typedef eosio::multi_index<"deposit"_n, deposit_info> deposits;
+
    class [[eosio::contract("sys.match")]] exchange : public contract {
       public:
          using contract::contract;
@@ -181,9 +183,10 @@ namespace match {
          ACTION feecreate(uint32_t type,uint32_t rate, asset base_coin, asset quote_coin, account_name exc_acc);
          ACTION setfee(uint64_t trade_pair_id, uint64_t trade_fee_id, account_name exc_acc);
 
-         ACTION makeorder(account_name traders,asset base,asset quote,uint64_t trade_pair_id, account_name exc_acc);
          ACTION openorder(account_name traders, asset base_coin, asset quote_coin,uint64_t trade_pair_id, account_name exc_acc);
          ACTION match(uint64_t scope_base,uint64_t base_id,uint64_t scope_quote, account_name exc_acc);
+         //取消订单
+         ACTION cancelorder( uint64_t orderscope,uint64_t orderid);
 
          [[eosio::on_notify("eosio::transfer")]]
          void onforcetrans( const account_name& from,
@@ -201,13 +204,11 @@ namespace match {
          using createtrade_action      = eosio::action_wrapper<"createtrade"_n,     &exchange::createtrade>;
          using feecreate_action        = eosio::action_wrapper<"feecreate"_n,       &exchange::feecreate>;
          using setfee_action           = eosio::action_wrapper<"setfee"_n,          &exchange::setfee>;
-         using makeorder_action        = eosio::action_wrapper<"makeorder"_n,       &exchange::makeorder>;
          using openorder_action        = eosio::action_wrapper<"openorder"_n,       &exchange::openorder>;
          using match_action            = eosio::action_wrapper<"match"_n,           &exchange::match>;
 
       private:
          void checkExcAcc(account_name exc_acc);
-         uint64_t get_order_scope(const uint64_t &a,const uint64_t &b);
          void record_deal_info(const uint64_t &deal_scope,const order_deal_info &deal_base,const order_deal_info &deal_quote,
                               const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer );
          void record_price_info(const uint64_t &deal_scope,const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer);
