@@ -136,7 +136,7 @@ namespace match{
             this->pair_name = name{string_to_name( memoParts[2].c_str() )};
             this->exc_acc = string_to_name(memoParts[3].c_str());
          }
-         else if ( this->type == match_order ) {
+         else if ( this->type == match_deposit ) {
             this->dest = asset_from_string(memoParts[1]);
          }
          else if ( this->type == match_donate ) {

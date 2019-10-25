@@ -148,7 +148,7 @@ namespace match {
       });
 
    }
-   //取消订单
+//取消订单
    ACTION exchange::cancelorder( uint64_t orderscope,uint64_t orderid) {
       orderbooks orderbook_table( _self,orderscope );
       auto order_info = orderbook_table.find(orderid);
@@ -157,6 +157,40 @@ namespace match {
       require_auth( order_info->maker );
       transfer_to_other(order_info->undone_base,order_info->maker);
       orderbook_table.erase(order_info);
+   }
+
+   ACTION exchange::claimdeposit( const account_name &user,const asset &quantity,const string &memo ) {
+
+      require_auth( user );
+      deposits deposit_table(_self,user);
+      auto exist = deposit_table.find( quantity.symbol.raw() );
+      check( exist != deposit_table.end(),"the deposit do not existed");
+      check( exist->balance.amount >= quantity.amount,"you do not have enough deposit" );
+
+      transfer_to_other(quantity,user);
+      deposit_table.modify(exist, name{}, [&]( auto& s ) {
+         s.balance -= quantity;
+      });
+
+   }
+
+   ACTION exchange::depositorder(const account_name &traders,const asset &base_coin,const asset &quote_coin,
+                                 const name &trade_pair_name,const account_name &exc_acc) {
+      require_auth( traders );
+      deposits deposit_table(_self,traders);
+      auto exist = deposit_table.find( base_coin.symbol.raw() );
+      check( exist != deposit_table.end(),"the deposit do not existed");
+      check( exist->balance.amount >= base_coin.amount,"you do not have enough deposit" );
+
+      deposit_table.modify(exist, name{}, [&]( auto& s ) {
+         s.balance -= base_coin;
+      });
+
+      openorder_action  temp { 
+         _self,
+         {  { name{exc_acc}, eosforce::active_permission },{ get_self(), eosforce::active_permission } }  
+      };
+      temp.send( traders,base_coin,quote_coin,trade_pair_name,exc_acc );
    }
 //转帐eosio 代币
    void exchange::onforcetrans( const account_name& from,
@@ -175,7 +209,9 @@ namespace match {
          };
          temp.send( from,quantity,trans.dest,trans.pair_name,trans.exc_acc );
       }
-      
+      else if ( trans.type == match_deposit ) {
+         transdeposit(quantity,from);
+      }
    }
 //转帐其他代币
    void exchange::ontokentrans( const account_name& from,
@@ -193,6 +229,9 @@ namespace match {
             {  { name{trans.exc_acc}, eosforce::active_permission },{ get_self(), eosforce::active_permission } }  
          };
          temp.send( from,quantity,trans.dest,trans.pair_name,trans.exc_acc );
+      }
+      else if ( trans.type == match_deposit ) {
+         transdeposit(quantity,from);
       }
    }
 
@@ -248,6 +287,12 @@ namespace match {
 //成交，一定要满足一定条件再落，毕竟占用内存比较多，而且内存的支付由谁来？吃单有问题，如果吃了比自己小的单子，是否就会改变自己的价格？这个问题明天再说
    ACTION exchange::match(uint64_t scope_base,uint64_t base_id,uint64_t scope_quote, name trade_pair_name, account_name exc_acc) {
       require_auth( exc_acc );
+      
+      trading_pairs trading_pairs_table(_self,exc_acc);
+      auto trade_pair =  trading_pairs_table.find(trade_pair_name.value);
+      check(trade_pair != trading_pairs_table.end(), "can not find the trade pair");
+      auto fee_name = trade_pair->fee_name;
+
       orderbooks orderbook_table( _self,scope_base );
       auto base_order = orderbook_table.find(base_id);
       check( base_order != orderbook_table.end(),"can not find base order" );
@@ -256,7 +301,6 @@ namespace match {
       auto scope_order = order_scope_table.find(scope_base);
       check( scope_order != order_scope_table.end(),"can not find order scope" );
       auto coin = scope_order->coin;
-      
 
       auto base_price = static_cast<int128_t>(base_order->base.amount) * 1000000 / base_order->quote.amount;
       orderbooks orderbook_table_quote( _self,scope_quote );
@@ -298,8 +342,9 @@ namespace match {
                done_quote += itr_begin->undone_base;
                record_deal_info(deal_scope,order_deal_base,order_deal_quote,itr_begin->undone_base,itr_begin->undone_quote,current_block,exc_acc);
                //打币 给itr_begin->receiver 打币 itr_begin->undone_quote
-               transfer_to_other(itr_begin->undone_quote,itr_begin->receiver);
-               // idx.erase( itr_begin );
+               //transfer_to_other(itr_begin->undone_quote,itr_begin->receiver);
+               dealfee(itr_begin->undone_quote,itr_begin->receiver,fee_name,exc_acc);
+               idx.erase( itr_begin );
 
                if ( undone_quote.amount == 0 ) {
                   is_not_done = false;
@@ -311,7 +356,8 @@ namespace match {
                auto quote_order_quote = asset( static_cast<int128_t>(undone_quote.amount) * static_cast<int128_t>(itr_begin->undone_quote.amount) 
                   / itr_begin->undone_base.amount,itr_begin->undone_quote.symbol );
                //打币 给itr_begin->receiver 打币 quote_order_quote
-               transfer_to_other(quote_order_quote,itr_begin->receiver);
+               //transfer_to_other(quote_order_quote,itr_begin->receiver,fee_name,exc_acc);
+               dealfee(quote_order_quote,itr_begin->receiver,fee_name,exc_acc);
                //quote base coin 需要使用  以我的价格为准的，不需要修改
                idx.modify(itr_begin, name{exc_acc}, [&]( auto& s ) {
                   s.undone_base -= undone_quote;
@@ -345,7 +391,7 @@ namespace match {
             record_price_info(deal_scope,done_quote,done_base,current_block,exc_acc);
          }
 
-         transfer_to_other(done_quote,base_order->receiver);
+         dealfee(done_quote,base_order->receiver,fee_name,exc_acc);
       }
       
       if ( ( base_coin && undone_base.amount > 0 ) || ( !base_coin && undone_quote.amount > 0 ) ) {
@@ -365,10 +411,10 @@ namespace match {
       else {
          //返币
          if ( base_coin && undone_quote.amount > 0 ) {
-            transfer_to_other(undone_quote,base_order->receiver);
+            transdeposit(undone_quote,base_order->receiver);
          }
          else if( !base_coin && undone_base.amount > 0 ){
-            transfer_to_other(undone_base,base_order->receiver);
+            transdeposit(undone_base,base_order->receiver);
          }
          orderbook_table.erase(base_order);
       }
@@ -446,10 +492,22 @@ namespace match {
       }
    }
 
+   void exchange::transdeposit(const asset& quantity,const account_name& to) {
+
+      deposits deposit_table(_self,to);
+      auto exist = deposit_table.find( quantity.symbol.raw() );
+      check( exist != deposit_table.end(),"the deposit do not existed");
+
+      deposit_table.modify(exist, name{}, [&]( auto& s ) { 
+         s.balance += quantity;
+      });
+   }
+
    void exchange::dealfee(const asset &quantity,const account_name &to,const name &fee_name,const account_name &exc_acc) {
       
-      if ( fee_name == name{} ) {
-         transfer_to_other(quantity,to);
+      if ( fee_name.value == name{}.value ) {
+         transdeposit(quantity,to);
+         return ;
       }
 
       trade_fees trade_fee_tbl(_self,exc_acc);
@@ -459,36 +517,39 @@ namespace match {
       asset exc_quantity,trader_quantity,min_fee;
       switch(trade_fee->fee_name.value) {
          case name{"f.null"_n}.value:
-            transfer_to_other(quantity,to);
+            transdeposit(quantity,to);
             break;
          case name{"f.fix"_n}.value:
             exc_quantity = quantity.symbol.raw() == trade_fee->fees_base.symbol.raw() ? trade_fee->fees_base:trade_fee->fees_quote;
             trader_quantity = quantity - exc_quantity;
-            transfer_to_other(trader_quantity,to);
-            transfer_to_other(exc_quantity,exc_acc);
+            transdeposit(trader_quantity,to);
+            transdeposit(exc_quantity,exc_acc);
             break;
          case name{"f.ratio"_n}.value:
             exc_quantity = quantity * trade_fee->rate / 10000;
             trader_quantity = quantity - exc_quantity;
-            transfer_to_other(trader_quantity,to);
-            transfer_to_other(exc_quantity,exc_acc);
+            transdeposit(trader_quantity,to);
+            transdeposit(exc_quantity,exc_acc);
             break;
          case name{"f.ratiofix"_n}.value:
             exc_quantity = quantity * trade_fee->rate / 10000;
             min_fee = quantity.symbol.raw() == trade_fee->fees_base.symbol.raw() ? trade_fee->fees_base:trade_fee->fees_quote;
             exc_quantity = exc_quantity > min_fee ? exc_quantity : min_fee;
             trader_quantity = quantity - exc_quantity;
-            transfer_to_other(trader_quantity,to);
-            transfer_to_other(exc_quantity,exc_acc);
+            transdeposit(trader_quantity,to);
+            transdeposit(exc_quantity,exc_acc);
             break;
          case name{"p.fix"_n}.value:
+            transdeposit(quantity,to);
             break;
          case name{"p.ratio"_n}.value:
+            transdeposit(quantity,to);
             break;
          case name{"p.ratiofix"_n}.value:
+            transdeposit(quantity,to);
             break;
          default:
-            transfer_to_other(quantity,to);
+            transdeposit(quantity,to);
             break;                        
       }
    }

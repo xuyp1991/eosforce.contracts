@@ -202,6 +202,9 @@ namespace match {
          ACTION cancelorder( uint64_t orderscope,uint64_t orderid);
          //opendeposit
          ACTION opendeposit( const account_name &user,const asset &quantity,const string &memo );
+         ACTION claimdeposit( const account_name &user,const asset &quantity,const string &memo );
+
+         ACTION depositorder(const account_name &traders,const asset &base_coin,const asset &quote_coin,const name &trade_pair_name,const account_name &exc_acc);
 
          [[eosio::on_notify("eosio::transfer")]]
          void onforcetrans( const account_name& from,
@@ -233,6 +236,7 @@ namespace match {
          inline void checkfeetype(name fee_type);
          //dealfee 调用transfer
          void dealfee(const asset &quantity,const account_name &to,const name &fee_name,const account_name &exc_acc);
+         void transdeposit(const asset& quantity,const account_name& to);
    };
    /** @}*/ // end of @defgroup eosiomsig eosio.msig
 } /// namespace eosio
