@@ -348,7 +348,7 @@ namespace match {
                dealfee(itr_begin->undone_quote,itr_begin->receiver,fee_name,exc_acc);
                idx.erase( itr_begin );
 
-               if ( undone_quote.amount == 0 ) {
+               if ( ( !base_coin && undone_quote.amount == 0 ) || ( base_coin && undone_base.amount == 0 ) ) {
                   is_not_done = false;
                }
             }
