@@ -47,10 +47,13 @@ namespace match {
       check(base_coin.symbol.raw() != quote_coin.symbol.raw(), "base coin and quote coin must be different");
       trading_pairs trading_pairs_table(_self,exc_acc);
 
-      uint128_t idxkey = make_128_key(base_coin.symbol.raw(), quote_coin.symbol.raw());//好像是不行
-      auto idx = trading_pairs_table.get_index<"idxkey"_n>();
-      auto itr = idx.find(idxkey);
-      check(itr == idx.end(), "trading pair already created");
+      // uint128_t idxkey = make_128_key(base_coin.symbol.raw(), quote_coin.symbol.raw());//好像是不行
+      // auto idx = trading_pairs_table.get_index<"idxkey"_n>();
+      // auto itr = idx.find(idxkey);
+      // check(itr == idx.end(), "trading pair already created");
+
+      auto pair = trading_pairs_table.find(trade_pair_name.value);
+      check( pair == trading_pairs_table.end(),"trading pair already created" );
 
       uint64_t order_scope1 = 0,order_scope2 = 0;
       //插入order scope  需要插入两个
@@ -160,7 +163,6 @@ namespace match {
    }
 
    ACTION exchange::claimdeposit( const account_name &user,const asset &quantity,const string &memo ) {
-
       require_auth( user );
       deposits deposit_table(_self,user);
       auto exist = deposit_table.find( quantity.symbol.raw() );
