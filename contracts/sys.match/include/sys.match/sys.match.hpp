@@ -27,6 +27,8 @@ namespace match {
    using eosio::require_auth;
    //using eosio::current_block_num;
 
+   static constexpr uint32_t PRICE_ACCURACY = 1000000;
+
  //自带排序 有问题
    inline uint128_t make_128_key(const uint64_t &a,const uint64_t &b) {
       return uint128_t(a)<<64 | b;
@@ -53,6 +55,10 @@ namespace match {
          return uint128_t(b)<<64 | a | 0x10; 
       } 
       return uint128_t(b)<<64 | a;
+   }
+
+   inline uint128_t cal_price(const int64_t &a,const int64_t &b) {
+      return static_cast<int128_t>(a) * PRICE_ACCURACY / b;
    }
 
    struct [[eosio::table, eosio::contract("sys.match")]] trading_pair{
@@ -95,13 +101,13 @@ namespace match {
       account_name    exc_acc;
 
       uint64_t primary_key() const { return id; }
-      uint64_t get_price() const {
-         return quote.amount * 1000000 / base.amount;
+      uint128_t get_price() const {// to be modify
+         return cal_price(quote.amount , base.amount);
       }
       uint64_t get_maker() const { return maker; }
    };
    typedef eosio::multi_index<"orderbook"_n, order
-      ,indexed_by< "pricekey"_n, const_mem_fun<order, uint64_t, &order::get_price>>
+      ,indexed_by< "pricekey"_n, const_mem_fun<order, uint128_t, &order::get_price>>
       ,indexed_by< "bymaker"_n, const_mem_fun<order, uint64_t, &order::get_maker>>
    > orderbooks;
 

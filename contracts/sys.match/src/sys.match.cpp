@@ -286,7 +286,7 @@ namespace match {
    }
 
 //成交数据处理，费用处理
-//成交，一定要满足一定条件再落，毕竟占用内存比较多，而且内存的支付由谁来？吃单有问题，如果吃了比自己小的单子，是否就会改变自己的价格？这个问题明天再说
+//成交，最大深度限制以及重复匹配功能
    ACTION exchange::match(uint64_t scope_base,uint64_t base_id,uint64_t scope_quote, name trade_pair_name, account_name exc_acc) {
       require_auth( exc_acc );
       
@@ -304,7 +304,7 @@ namespace match {
       check( scope_order != order_scope_table.end(),"can not find order scope" );
       auto coin = scope_order->coin;
 
-      auto base_price = static_cast<int128_t>(base_order->base.amount) * 1000000 / base_order->quote.amount;
+      auto base_price = cal_price(base_order->base.amount,base_order->quote.amount);//static_cast<int128_t>(base_order->base.amount) * 1000000 / base_order->quote.amount;   //to be modify
       orderbooks orderbook_table_quote( _self,scope_quote );
       auto deal_scope = scope_base > scope_quote ? scope_base : scope_quote;
 
@@ -343,9 +343,8 @@ namespace match {
                done_base += itr_begin->undone_quote;
                done_quote += itr_begin->undone_base;
                record_deal_info(deal_scope,order_deal_base,order_deal_quote,itr_begin->undone_base,itr_begin->undone_quote,current_block,exc_acc);
-               //打币 给itr_begin->receiver 打币 itr_begin->undone_quote
-               //transfer_to_other(itr_begin->undone_quote,itr_begin->receiver);
                dealfee(itr_begin->undone_quote,itr_begin->receiver,fee_name,exc_acc);
+
                idx.erase( itr_begin );
 
                if ( ( !base_coin && undone_quote.amount == 0 ) || ( base_coin && undone_base.amount == 0 ) ) {
@@ -358,7 +357,6 @@ namespace match {
                auto quote_order_quote = asset( static_cast<int128_t>(undone_quote.amount) * static_cast<int128_t>(itr_begin->undone_quote.amount) 
                   / itr_begin->undone_base.amount,itr_begin->undone_quote.symbol );
                //打币 给itr_begin->receiver 打币 quote_order_quote
-               //transfer_to_other(quote_order_quote,itr_begin->receiver,fee_name,exc_acc);
                dealfee(quote_order_quote,itr_begin->receiver,fee_name,exc_acc);
                //quote base coin 需要使用  以我的价格为准的，不需要修改
                idx.modify(itr_begin, name{exc_acc}, [&]( auto& s ) {
