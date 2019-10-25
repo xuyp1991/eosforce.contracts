@@ -15,6 +15,8 @@ namespace match{
    using std::vector;
 
    static constexpr auto match_order = "m.order"_n;
+   static constexpr auto match_deposit = "m.deposit"_n;
+   static constexpr auto match_donate = "m.donate"_n;
 
    uint64_t char_to_symbol( char c ) {
       if( c >= 'a' && c <= 'z' )
@@ -121,7 +123,7 @@ namespace match{
    struct transfer_memo{
       name type;
       asset dest;
-      uint32_t pair_id;
+      name pair_name;
       account_name exc_acc;
       explicit transfer_memo( const std::string& memo ) {
          std::vector<std::string> memoParts;
@@ -131,8 +133,17 @@ namespace match{
          this->type = name{ string_to_name( memoParts[0].c_str() ) };
          if ( this->type == match_order ) {
             this->dest = asset_from_string(memoParts[1]);
-            this->pair_id = atoi( memoParts[2].c_str() );
+            this->pair_name = name{string_to_name( memoParts[2].c_str() )};
             this->exc_acc = string_to_name(memoParts[3].c_str());
+         }
+         else if ( this->type == match_order ) {
+            this->dest = asset_from_string(memoParts[1]);
+         }
+         else if ( this->type == match_donate ) {
+
+         }
+         else {
+            check(false,"wrong transfer memo");
          }
 
       }

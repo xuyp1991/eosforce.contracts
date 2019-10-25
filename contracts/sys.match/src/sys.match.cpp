@@ -16,6 +16,15 @@ namespace match {
       check(itr1 != exc_tbl.end(), "exechange account has not been registered!");
    }
 
+   inline void exchange::checkfeetype(name fee_type) {
+      for( const auto& i : fee_type_data ) {
+            if( i == fee_type ) {
+               return ;
+            }
+         }
+      check(false,"fee type is not vaild");
+   }
+
    ACTION exchange::regex(account_name exc_acc){
       require_auth( exc_acc );
       //押金以后再考虑
@@ -32,7 +41,7 @@ namespace match {
       });
    }
 //这个地方出问题了
-   ACTION exchange::createtrade( asset base_coin, asset quote_coin, account_name exc_acc) {
+   ACTION exchange::createtrade(name trade_pair_name, asset base_coin, asset quote_coin, account_name exc_acc) {
       require_auth( exc_acc );
       checkExcAcc(exc_acc);
       check(base_coin.symbol.raw() != quote_coin.symbol.raw(), "base coin and quote coin must be different");
@@ -41,75 +50,101 @@ namespace match {
       uint128_t idxkey = make_128_key(base_coin.symbol.raw(), quote_coin.symbol.raw());//好像是不行
       auto idx = trading_pairs_table.get_index<"idxkey"_n>();
       auto itr = idx.find(idxkey);
-
       check(itr == idx.end(), "trading pair already created");
 
-      auto pk = trading_pairs_table.available_primary_key();
-      trading_pairs_table.emplace( name{exc_acc}, [&]( auto& p ) {
-         p.id = pk;
-         p.base  = base_coin;
-         p.quote  = quote_coin;
-         p.frozen       = 0;
-         p.fee_id       = -1;
-      });
-
+      uint64_t order_scope1 = 0,order_scope2 = 0;
       //插入order scope  需要插入两个
       orderscopes order_scope_table(_self,_self.value);
       uint128_t scopekey_base =  make_128_key(base_coin.symbol.raw(),quote_coin.symbol.raw(),base_coin.symbol.raw());
       auto idx_scope = order_scope_table.get_index<"idxkey"_n>();
       auto itr_base = idx_scope.find(scopekey_base);
       if ( itr_base == idx_scope.end() ) {
-         auto orderscope = order_scope_table.available_primary_key();
+         order_scope1 = order_scope_table.available_primary_key();
          order_scope_table.emplace( name{exc_acc}, [&]( auto& p ) {
-            p.id = orderscope;
+            p.id = order_scope1;
             p.base = base_coin;
             p.quote = quote_coin;
             p.coin = base_coin;
          });
       }
+      else {
+         order_scope1 = itr_base->id;
+      }
 
       uint128_t scopekey_quote =  make_128_key(quote_coin.symbol.raw(),base_coin.symbol.raw(),base_coin.symbol.raw());
       auto itr_quote = idx_scope.find(scopekey_quote);
       if ( itr_quote == idx_scope.end() ) {
-         auto orderscope = order_scope_table.available_primary_key();
+         order_scope2 = order_scope_table.available_primary_key();
          order_scope_table.emplace( name{exc_acc}, [&]( auto& p ) {
-            p.id = orderscope;
+            p.id = order_scope2;
             p.base = quote_coin;
             p.quote = base_coin;
             p.coin = base_coin;
          });
       }
+      else {
+         order_scope2 = itr_quote->id;
+      }
+
+      trading_pairs_table.emplace( name{exc_acc}, [&]( auto& p ) {
+         p.pair_name = trade_pair_name;
+         p.base  = base_coin;
+         p.quote  = quote_coin;
+         p.frozen       = 0;
+         p.fee_name     = name{};
+         p.order_scope1 = order_scope1;
+         p.order_scope2 = order_scope2;
+      });
+
    }
 //目前仅支持按比例收取
-   ACTION exchange::feecreate(uint32_t type,uint32_t rate, asset base_coin, asset quote_coin, account_name exc_acc) {
+   ACTION exchange::feecreate(name fee_name,name fee_type,uint32_t rate, asset base_coin, asset quote_coin, account_name exc_acc) {
       require_auth( exc_acc );
 
       checkExcAcc(exc_acc);
+      checkfeetype(fee_type);
       trade_fees trade_fee_tbl(_self,exc_acc);
-      auto pk = trade_fee_tbl.available_primary_key();
-      trade_fee_tbl.emplace( name{exc_acc}, [&]( auto& p ) {
-         p.id = pk;
-         p.fees_base  = base_coin;
-         p.fees_quote  = quote_coin;
-         p.type = type;
-         p.rate = rate;
-      });
+
+      auto fee_info = trade_fee_tbl.find(fee_name.value);
+      if ( fee_info == trade_fee_tbl.end() ) {
+         trade_fee_tbl.emplace( name{exc_acc}, [&]( auto& p ) {
+            p.fee_name = fee_name;
+            p.fees_base  = base_coin;
+            p.fees_quote  = quote_coin;
+            p.fee_type = fee_type;
+            p.rate = rate;
+         });
+      }
+      else {
+         trade_fee_tbl.modify(fee_info, name{exc_acc}, [&]( auto& p ) {
+            p.fees_base  = base_coin;
+            p.fees_quote  = quote_coin;
+            p.fee_type = fee_type;
+            p.rate = rate;
+         } );
+      }
    }
 
-   ACTION exchange::setfee(uint64_t trade_pair_id, uint64_t trade_fee_id, account_name exc_acc) {
+   ACTION exchange::setfee(name trade_pair_name, name fee_name, account_name exc_acc) {
       require_auth( exc_acc );
 
       checkExcAcc(exc_acc);
       trading_pairs trading_pairs_table(_self,exc_acc);
-      auto trade_pair =  trading_pairs_table.find(trade_pair_id);
+      auto trade_pair =  trading_pairs_table.find(trade_pair_name.value);
       check(trade_pair != trading_pairs_table.end(), "can not find the trade pair");
 
       trade_fees trade_fee_tbl(_self,exc_acc);
-      auto trade_fee =  trade_fee_tbl.find(trade_pair_id);
+      auto trade_fee =  trade_fee_tbl.find(fee_name.value);
       check(trade_fee != trade_fee_tbl.end(), "can not find the trade fee info");
 
+      //check fee type
+      if ( trade_fee->fee_type.value == name{"f.fix"}.value || trade_fee->fee_type.value == name{"f.ratiofix"}.value ) {
+         check( trade_fee->fees_base.symbol.raw() == trade_pair->base.symbol.raw() && trade_fee->fees_quote.symbol.raw() == trade_pair->quote.symbol.raw(),
+               "can not to set fee to the pair,the type is not match the fee base or/and fee quote" );
+      }
+
       trading_pairs_table.modify(trade_pair, name{exc_acc}, [&]( auto& s ) {
-         s.fee_id = trade_fee_id;
+         s.fee_name = fee_name;
       });
 
    }
@@ -138,7 +173,7 @@ namespace match {
             _self,
             {  { name{trans.exc_acc}, eosforce::active_permission },{ get_self(), eosforce::active_permission } }  
          };
-         temp.send( from,quantity,trans.dest,trans.pair_id,trans.exc_acc );
+         temp.send( from,quantity,trans.dest,trans.pair_name,trans.exc_acc );
       }
       
    }
@@ -157,18 +192,18 @@ namespace match {
             _self,
             {  { name{trans.exc_acc}, eosforce::active_permission },{ get_self(), eosforce::active_permission } }  
          };
-         temp.send( from,quantity,trans.dest,trans.pair_id,trans.exc_acc );
+         temp.send( from,quantity,trans.dest,trans.pair_name,trans.exc_acc );
       }
    }
 
 //运营商支付，内部调用
-   ACTION exchange::openorder(account_name traders, asset base_coin, asset quote_coin,uint64_t trade_pair_id, account_name exc_acc) {
+   ACTION exchange::openorder(account_name traders, asset base_coin, asset quote_coin,name trade_pair_name, account_name exc_acc) {
       require_auth( _self );
       require_auth( exc_acc );
       checkExcAcc(exc_acc);
 
       trading_pairs trading_pairs_tbl(_self,exc_acc);
-      auto trade_pair =  trading_pairs_tbl.find(trade_pair_id);
+      auto trade_pair =  trading_pairs_tbl.find(trade_pair_name.value);
       check(trade_pair != trading_pairs_tbl.end(), "can not find the trade pair");
 
       check( ( base_coin.symbol == trade_pair->base.symbol && quote_coin.symbol == trade_pair->quote.symbol )
@@ -186,7 +221,7 @@ namespace match {
       auto order_id = orderbook_table.available_primary_key();
       orderbook_table.emplace( name{exc_acc}, [&]( auto& p ) {
          p.id = order_id;
-         p.pair_id = trade_pair_id;
+         p.pair_name = trade_pair_name;
          p.maker = traders;
          p.receiver = traders;
          p.base = base_coin;
@@ -206,12 +241,12 @@ namespace match {
          _self,
          {  { name{exc_acc}, eosforce::active_permission } }  
       };
-      temp.send( itr_base->id,order_id,itr_quote->id,exc_acc );
+      temp.send( itr_base->id,order_id,itr_quote->id,trade_pair_name,exc_acc );
    }
 
 //成交数据处理，费用处理
 //成交，一定要满足一定条件再落，毕竟占用内存比较多，而且内存的支付由谁来？吃单有问题，如果吃了比自己小的单子，是否就会改变自己的价格？这个问题明天再说
-   ACTION exchange::match(uint64_t scope_base,uint64_t base_id,uint64_t scope_quote, account_name exc_acc) {
+   ACTION exchange::match(uint64_t scope_base,uint64_t base_id,uint64_t scope_quote, name trade_pair_name, account_name exc_acc) {
       require_auth( exc_acc );
       orderbooks orderbook_table( _self,scope_base );
       auto base_order = orderbook_table.find(base_id);
@@ -340,6 +375,19 @@ namespace match {
 
    }
 
+   ACTION exchange::opendeposit( const account_name &user,const asset &quantity,const string &memo ) {
+      require_auth( user );
+
+      deposits deposit_table(_self,user);
+      auto exist = deposit_table.find( quantity.symbol.raw() );
+      check( exist == deposit_table.end(),"the deposit has existed");
+
+      deposit_table.emplace(name{user},[&]( auto& s ){
+         s.balance = asset(0,quantity.symbol);
+         s.frozen_balance = asset(0,quantity.symbol);
+      });
+   }
+
    void exchange::record_deal_info(const uint64_t &deal_scope,const order_deal_info &deal_base,const order_deal_info &deal_quote,
                                     const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer ){
       deals deal_table(_self,deal_scope);
@@ -395,6 +443,53 @@ namespace match {
             {  { get_self(), eosforce::active_permission } } 
          };
          temp.send( get_self().value, to, quantity, std::string( " match order deal transfer coin" ) );
+      }
+   }
+
+   void exchange::dealfee(const asset &quantity,const account_name &to,const name &fee_name,const account_name &exc_acc) {
+      
+      if ( fee_name == name{} ) {
+         transfer_to_other(quantity,to);
+      }
+
+      trade_fees trade_fee_tbl(_self,exc_acc);
+      auto trade_fee =  trade_fee_tbl.find(fee_name.value);
+      check(trade_fee != trade_fee_tbl.end(), "can not find the trade fee info");
+
+      asset exc_quantity,trader_quantity,min_fee;
+      switch(trade_fee->fee_name.value) {
+         case name{"f.null"_n}.value:
+            transfer_to_other(quantity,to);
+            break;
+         case name{"f.fix"_n}.value:
+            exc_quantity = quantity.symbol.raw() == trade_fee->fees_base.symbol.raw() ? trade_fee->fees_base:trade_fee->fees_quote;
+            trader_quantity = quantity - exc_quantity;
+            transfer_to_other(trader_quantity,to);
+            transfer_to_other(exc_quantity,exc_acc);
+            break;
+         case name{"f.ratio"_n}.value:
+            exc_quantity = quantity * trade_fee->rate / 10000;
+            trader_quantity = quantity - exc_quantity;
+            transfer_to_other(trader_quantity,to);
+            transfer_to_other(exc_quantity,exc_acc);
+            break;
+         case name{"f.ratiofix"_n}.value:
+            exc_quantity = quantity * trade_fee->rate / 10000;
+            min_fee = quantity.symbol.raw() == trade_fee->fees_base.symbol.raw() ? trade_fee->fees_base:trade_fee->fees_quote;
+            exc_quantity = exc_quantity > min_fee ? exc_quantity : min_fee;
+            trader_quantity = quantity - exc_quantity;
+            transfer_to_other(trader_quantity,to);
+            transfer_to_other(exc_quantity,exc_acc);
+            break;
+         case name{"p.fix"_n}.value:
+            break;
+         case name{"p.ratio"_n}.value:
+            break;
+         case name{"p.ratiofix"_n}.value:
+            break;
+         default:
+            transfer_to_other(quantity,to);
+            break;                        
       }
    }
 
