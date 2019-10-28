@@ -47,11 +47,6 @@ namespace match {
       check(base_coin.symbol.raw() != quote_coin.symbol.raw(), "base coin and quote coin must be different");
       trading_pairs trading_pairs_table(_self,exc_acc);
 
-      // uint128_t idxkey = make_128_key(base_coin.symbol.raw(), quote_coin.symbol.raw());//好像是不行
-      // auto idx = trading_pairs_table.get_index<"idxkey"_n>();
-      // auto itr = idx.find(idxkey);
-      // check(itr == idx.end(), "trading pair already created");
-
       auto pair = trading_pairs_table.find(trade_pair_name.value);
       check( pair == trading_pairs_table.end(),"trading pair already created" );
 
@@ -379,9 +374,7 @@ namespace match {
          }
       }
 
-
-      
-      //先打币，给base_order->receiver 打币done_quote，再改表
+      //先打币，给base_order->receiver 打币done_quote，再改表，这里dealfee也是不对的
       if ( done_quote.amount > 0 ) {
          //记录这次成交相关价格信息
          if( deal_scope == scope_quote ) {
@@ -503,6 +496,38 @@ namespace match {
       });
    }
 
+   void exchange::prepaycardfee(const asset& quantity,const account_name& from) {
+      deposits deposit_table(_self,from);
+      auto exist = deposit_table.find( quantity.symbol.raw() );
+      check( exist != deposit_table.end(),"the deposit do not existed");
+      check( exist->balance >= quantity ,"the deposit balance is not enough");
+
+      deposit_table.modify(exist, name{}, [&]( auto& s ) { 
+         s.balance -= quantity;
+         s.frozen_balance += quantity;
+      });
+   }
+//预扣模式问题好像是很多的
+//费率提高怎么办？如果一个运营商修改费用导致整个链不能使用怎么办？  如果预扣的手续费被修改会是一件很麻烦的事情，如果不去预扣，用户手续费不足怎么办？
+   void exchange::paycardfee(const asset& quantity,const account_name& from,const account_name& to) {
+      deposits deposit_table(_self,from);
+      auto exist_from = deposit_table.find( quantity.symbol.raw() );
+      check( exist_from != deposit_table.end(),"the deposit from do not existed");
+      check( exist_from->frozen_balance >= quantity ,"the user frozen_balance is not enough");
+
+      deposits deposit_table_to(_self,from);
+      auto exist_to = deposit_table_to.find( quantity.symbol.raw() );
+      check( exist_to != deposit_table_to.end(),"the deposit to do not existed");
+
+      deposit_table_to.modify(exist_to, name{}, [&]( auto& s ) { 
+         s.balance += quantity;
+      });
+
+      deposit_table.modify(exist_from, name{}, [&]( auto& s ) { 
+         s.frozen_balance -= quantity;
+      });
+   }
+//点卡模式怎么知道哪个币种收多少手续费？
    void exchange::dealfee(const asset &quantity,const account_name &to,const name &fee_name,const account_name &exc_acc) {
       
       if ( fee_name.value == name{}.value ) {

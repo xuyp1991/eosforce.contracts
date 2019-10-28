@@ -161,7 +161,7 @@ namespace match {
       uint64_t primary_key() const { return id; }
    };
    typedef eosio::multi_index<"recordprice"_n, record_price_info> record_prices;
-
+//点卡模式会有很多限制，固定手续费，按比例手续费，固定只能收一次
    constexpr static auto fee_type_data = std::array<name, 7>{{
       name{"f.null"_n},
       name{"f.fix"_n},
@@ -243,6 +243,8 @@ namespace match {
          //dealfee 调用transfer
          void dealfee(const asset &quantity,const account_name &to,const name &fee_name,const account_name &exc_acc);
          void transdeposit(const asset& quantity,const account_name& to);
+         void prepaycardfee(const asset& quantity,const account_name& from);
+         void paycardfee(const asset& quantity,const account_name& from,const account_name& to);
    };
    /** @}*/ // end of @defgroup eosiomsig eosio.msig
 } /// namespace eosio
