@@ -1,73 +1,88 @@
-<h1 class="contract">approve</h1>
+<h1 class="contract">regex</h1>
 
 ---
 spec_version: "0.2.0"
-title: Approve Proposed Transaction
-summary: '{{nowrap level.actor}} approves the {{nowrap proposal_name}} proposal'
-icon: @ICON_BASE_URL@/@MULTISIG_ICON_URI@
+title: Register as an operator
+summary: '{{exc_acc}} Register as an operator'
 ---
 
-{{level.actor}} approves the {{proposal_name}} proposal proposed by {{proposer}} with the {{level.permission}} permission of {{level.actor}}.
-
-<h1 class="contract">cancel</h1>
+<h1 class="contract">createtrade</h1>
 
 ---
 spec_version: "0.2.0"
-title: Cancel Proposed Transaction
-summary: '{{nowrap canceler}} cancels the {{nowrap proposal_name}} proposal'
-icon: @ICON_BASE_URL@/@MULTISIG_ICON_URI@
+title: create a trade pair on the contract
+summary: 'the operator can create a trade pair on the contract'
 ---
 
-{{canceler}} cancels the {{proposal_name}} proposal submitted by {{proposer}}.
-
-<h1 class="contract">exec</h1>
+<h1 class="contract">feecreate</h1>
 
 ---
 spec_version: "0.2.0"
-title: Execute Proposed Transaction
-summary: '{{nowrap executer}} executes the {{nowrap proposal_name}} proposal'
-icon: @ICON_BASE_URL@/@MULTISIG_ICON_URI@
+title: Create fee collection rules
+summary: 'the operator can create fee collection rules'
 ---
 
-{{executer}} executes the {{proposal_name}} proposal submitted by {{proposer}} if the minimum required approvals for the proposal have been secured.
-
-<h1 class="contract">invalidate</h1>
+<h1 class="contract">setfee</h1>
 
 ---
 spec_version: "0.2.0"
-title: Invalidate All Approvals
-summary: '{{nowrap account}} invalidates approvals on outstanding proposals'
-icon: @ICON_BASE_URL@/@MULTISIG_ICON_URI@
+title: Set fee collection rule to a trade pair
+summary: 'the operator can set a fee collection rule to a trade pair'
 ---
 
-{{account}} invalidates all approvals on proposals which have not yet executed.
-
-<h1 class="contract">propose</h1>
+<h1 class="contract">opendeposit</h1>
 
 ---
 spec_version: "0.2.0"
-title: Propose Transaction
-summary: '{{nowrap proposer}} creates the {{nowrap proposal_name}}'
-icon: @ICON_BASE_URL@/@MULTISIG_ICON_URI@
+title: User open a deposit on the contract
+summary: '{{User}} open a deposit'
 ---
 
-{{proposer}} creates the {{proposal_name}} proposal for the following transaction:
-{{to_json trx}}
-
-The proposal requests approvals from the following accounts at the specified permission levels:
-{{#each requested}}
-   + {{this.permission}} permission of {{this.actor}}
-{{/each}}
-
-If the proposed transaction is not executed prior to {{trx.expiration}}, the proposal will automatically expire.
-
-<h1 class="contract">unapprove</h1>
+<h1 class="contract">claimdeposit</h1>
 
 ---
 spec_version: "0.2.0"
-title: Unapprove Proposed Transaction
-summary: '{{nowrap level.actor}} revokes the approval previously provided to {{nowrap proposal_name}} proposal'
-icon: @ICON_BASE_URL@/@MULTISIG_ICON_URI@
+title: Claim some coin from the deposit
+summary: '{{user}} can claim some coin on the deposit'
 ---
 
-{{level.actor}} revokes the approval previously provided at their {{level.permission}} permission level from the {{proposal_name}} proposal proposed by {{proposer}}.
+<h1 class="contract">depositorder</h1>
+
+---
+spec_version: "0.2.0"
+title: open an order from the deposit
+summary: '{{user}} use deposit to open an order to buy other coin'
+---
+
+<h1 class="contract">cancelorder</h1>
+
+---
+spec_version: "0.2.0"
+title: cancel an order
+summary: '{{user}} cancel an order with this action'
+---
+
+<h1 class="contract">openorder</h1>
+
+---
+spec_version: "0.2.0"
+title: open an order
+summary: ' the contract call for open an order'
+---
+
+<h1 class="contract">match</h1>
+
+---
+spec_version: "0.2.0"
+title: match with other order for deal
+summary: ' the contract call for match other order'
+---
+
+<h1 class="contract">recorddeal</h1>
+
+---
+spec_version: "0.2.0"
+title: record deal info on the contract
+summary: ' the contract call for record deal info'
+---
+
