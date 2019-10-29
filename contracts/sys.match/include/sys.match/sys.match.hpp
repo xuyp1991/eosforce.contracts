@@ -191,6 +191,16 @@ namespace match {
 
    class [[eosio::contract("sys.match")]] exchange : public contract {
       public:
+         struct recorddeal_param {
+            uint64_t deal_scope;
+            order_deal_info deal_base;
+            order_deal_info deal_quote;
+            asset base;
+            asset quote;
+            uint32_t current_block;
+            account_name exc_acc;
+         };
+      public:
          using contract::contract;
 
          ACTION regex(account_name exc_acc);
@@ -207,6 +217,8 @@ namespace match {
          ACTION claimdeposit( const account_name &user,const asset &quantity,const string &memo );
 
          ACTION depositorder(const account_name &traders,const asset &base_coin,const asset &quote_coin,const name &trade_pair_name,const account_name &exc_acc);
+
+         ACTION recorddeal( vector<recorddeal_param> &params );
 
          [[eosio::on_notify("eosio::transfer")]]
          void onforcetrans( const account_name& from,
@@ -227,7 +239,8 @@ namespace match {
          using openorder_action        = eosio::action_wrapper<"openorder"_n,       &exchange::openorder>;
          using match_action            = eosio::action_wrapper<"match"_n,           &exchange::match>;
          using cancelorder_action      = eosio::action_wrapper<"cancelorder"_n,     &exchange::cancelorder>;
-         using depositorder_action     = eosio::action_wrapper<"depositorder"_n,     &exchange::depositorder>;
+         using depositorder_action     = eosio::action_wrapper<"depositorder"_n,    &exchange::depositorder>;
+         using recorddeal_action       = eosio::action_wrapper<"recorddeal"_n,      &exchange::recorddeal>;
 
       private:
          void checkExcAcc(account_name exc_acc);

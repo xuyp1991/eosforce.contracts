@@ -309,6 +309,8 @@ namespace match {
 
       bool base_coin = coin.symbol.raw() == undone_base.symbol.raw();
 
+      vector<recorddeal_param> deal_param;
+
       while(is_not_done) {
          auto idx = orderbook_table_quote.get_index<"pricekey"_n>();
          auto itr_up = idx.upper_bound( base_price );
@@ -333,7 +335,9 @@ namespace match {
 
                done_base += itr_begin->undone_quote;
                done_quote += itr_begin->undone_base;
-               record_deal_info(deal_scope,order_deal_base,order_deal_quote,itr_begin->undone_base,itr_begin->undone_quote,current_block,exc_acc);
+               recorddeal_param temp_deal{deal_scope,order_deal_base,order_deal_quote,itr_begin->undone_base,itr_begin->undone_quote,current_block,exc_acc};
+               deal_param.push_back(temp_deal);
+               //record_deal_info(deal_scope,order_deal_base,order_deal_quote,itr_begin->undone_base,itr_begin->undone_quote,current_block,exc_acc);
                dealfee(itr_begin->undone_quote,itr_begin->receiver,fee_name,exc_acc,!base_coin);
 
                idx.erase( itr_begin );
@@ -354,7 +358,9 @@ namespace match {
                   s.undone_base -= undone_quote;
                   s.undone_quote -= quote_order_quote;
                });
-               record_deal_info(deal_scope,order_deal_base,order_deal_quote,undone_quote,quote_order_quote,current_block,exc_acc);
+               recorddeal_param temp_deal{deal_scope,order_deal_base,order_deal_quote,undone_quote,quote_order_quote,current_block,exc_acc};
+               deal_param.push_back(temp_deal);
+               //record_deal_info(deal_scope,order_deal_base,order_deal_quote,undone_quote,quote_order_quote,current_block,exc_acc);
                
                done_base += quote_order_quote;
                done_quote += undone_quote;
@@ -368,6 +374,14 @@ namespace match {
          else {
             is_not_done = false;
          }
+      }
+
+      if ( deal_param.size() > 0 ) {
+         recorddeal_action temp { 
+            _self,
+            {  { name{exc_acc}, eosforce::active_permission },{ get_self(), eosforce::active_permission } }  
+         };
+         temp.send( deal_param );
       }
 
       //先打币，给base_order->receiver 打币done_quote，再改表，这里dealfee也是不对的
@@ -421,6 +435,15 @@ namespace match {
          s.balance = asset(0,quantity.symbol);
          s.freezen = asset(0,quantity.symbol);
       });
+   }
+
+   ACTION exchange::recorddeal( vector<recorddeal_param> &params ) {
+      require_auth( _self );
+      for(auto recorddeal_info : params)
+      {
+         record_deal_info(recorddeal_info.deal_scope,recorddeal_info.deal_base,recorddeal_info.deal_quote,recorddeal_info.base
+                           ,recorddeal_info.quote,recorddeal_info.current_block,recorddeal_info.exc_acc);
+      }
    }
 
    void exchange::record_deal_info(const uint64_t &deal_scope,const order_deal_info &deal_base,const order_deal_info &deal_quote,
