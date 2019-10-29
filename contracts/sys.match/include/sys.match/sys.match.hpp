@@ -25,11 +25,11 @@ namespace match {
    using eosio::contract;
    using eosio::check;
    using eosio::require_auth;
-   //using eosio::current_block_num;
 
    static constexpr uint32_t PRICE_ACCURACY = 1000000;
+   static constexpr uint32_t FEE_ACCURACY = 10000;
 
- //自带排序 有问题
+
    inline uint128_t make_128_key(const uint64_t &a,const uint64_t &b) {
       return uint128_t(a)<<64 | b;
    }
@@ -101,7 +101,7 @@ namespace match {
       account_name    exc_acc;
 
       uint64_t primary_key() const { return id; }
-      uint128_t get_price() const {// to be modify
+      uint128_t get_price() const {
          return cal_price(quote.amount , base.amount,quote.symbol.precision(),base.symbol.precision());
       }
       uint64_t get_maker() const { return maker; }
@@ -161,7 +161,7 @@ namespace match {
       uint64_t primary_key() const { return id; }
    };
    typedef eosio::multi_index<"recordprice"_n, record_price_info> record_prices;
-//费用得优先级  优先点卡,其次代币
+
    constexpr static auto fee_type_data = std::array<name, 7>{{
       name{"f.null"_n},
       name{"f.ratio"_n},
@@ -210,9 +210,8 @@ namespace match {
 
          ACTION openorder(account_name traders, asset base_coin, asset quote_coin,name trade_pair_name, account_name exc_acc);
          ACTION match(uint64_t scope_base,uint64_t base_id,uint64_t scope_quote, name trade_pair_name, account_name exc_acc);
-         //取消订单
+
          ACTION cancelorder( uint64_t orderscope,uint64_t orderid);
-         //opendeposit
          ACTION opendeposit( const account_name &user,const asset &quantity,const string &memo );
          ACTION claimdeposit( const account_name &user,const asset &quantity,const string &memo );
 
@@ -247,15 +246,11 @@ namespace match {
          void record_deal_info(const uint64_t &deal_scope,const order_deal_info &deal_base,const order_deal_info &deal_quote,
                               const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer );
          void record_price_info(const uint64_t &deal_scope,const asset &base,const asset &quote,const uint32_t &current_block,const account_name &ram_payer);
-         //给其他人打币
          void transfer_to_other(const asset& quantity,const account_name& to);
          inline void checkfeetype(name fee_type);
-         //dealfee 调用transfer
          void dealfee(const asset &quantity,const account_name &to,const name &fee_name,const account_name &exc_acc,bool base_coin);
          void transdeposit(const asset& quantity,const account_name& to);
-         // void prepaycardfee(const asset& quantity,const account_name& from);
          bool paycardfee(const asset& quantity,const account_name& from,const account_name& to);
-         //bool openordercardfee(const asset& quantity,const account_name& from,const name &fee_name,const account_name &exc_acc);
    };
-   /** @}*/ // end of @defgroup eosiomsig eosio.msig
-} /// namespace eosio
+   /** @}*/ // end exchange
+} /// end match

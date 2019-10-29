@@ -27,7 +27,7 @@ namespace match {
 
    ACTION exchange::regex(account_name exc_acc){
       require_auth( exc_acc );
-      //押金以后再考虑
+      //todo
       //const asset min_staked(10000000,CORE_SYMBOL);
       
       // check if exc_acc has freezed 1000 SYS
@@ -40,7 +40,7 @@ namespace match {
          e.exc_acc      = exc_acc;
       });
    }
-//这个地方出问题了
+
    ACTION exchange::createtrade(name trade_pair_name, asset base_coin, asset quote_coin, account_name exc_acc) {
       require_auth( exc_acc );
       checkExcAcc(exc_acc);
@@ -52,7 +52,6 @@ namespace match {
       check( pair == trading_pairs_table.end(),"trading pair already created" );
 
       uint64_t order_scope1 = 0,order_scope2 = 0;
-      //插入order scope  需要插入两个
       orderscopes order_scope_table(_self,_self.value);
       uint128_t scopekey_base =  make_128_key(base_coin.symbol.raw(),quote_coin.symbol.raw(),base_coin.symbol.raw());
       auto idx_scope = order_scope_table.get_index<"idxkey"_n>();
@@ -96,7 +95,7 @@ namespace match {
       });
 
    }
-//目前仅支持按比例收取
+
    ACTION exchange::feecreate(name fee_name,name fee_type,uint32_t rate,uint32_t rate_base,uint32_t rate_quote, asset coin_card, account_name exc_acc) {
       require_auth( exc_acc );
 
@@ -143,7 +142,7 @@ namespace match {
       });
 
    }
-//取消订单
+
    ACTION exchange::cancelorder( uint64_t orderscope,uint64_t orderid) {
       orderbooks orderbook_table( _self,orderscope );
       auto order_info = orderbook_table.find(orderid);
@@ -186,7 +185,7 @@ namespace match {
       };
       temp.send( traders,base_coin,quote_coin,trade_pair_name,exc_acc );
    }
-//转帐eosio 代币
+
    void exchange::onforcetrans( const account_name& from,
                                  const account_name& to,
                                  const asset& quantity,
@@ -207,7 +206,7 @@ namespace match {
          transdeposit(quantity,from);
       }
    }
-//转帐其他代币
+
    void exchange::ontokentrans( const account_name& from,
                                  const account_name& to,
                                  const asset& quantity,
@@ -229,7 +228,6 @@ namespace match {
       }
    }
 
-//运营商支付，内部调用
    ACTION exchange::openorder(account_name traders, asset base_coin, asset quote_coin,name trade_pair_name, account_name exc_acc) {
       require_auth( _self );
       require_auth( exc_acc );
@@ -277,8 +275,6 @@ namespace match {
       temp.send( itr_base->id,order_id,itr_quote->id,trade_pair_name,exc_acc );
    }
 
-//成交数据处理，费用处理
-//成交，最大深度限制以及重复匹配功能
    ACTION exchange::match(uint64_t scope_base,uint64_t base_id,uint64_t scope_quote, name trade_pair_name, account_name exc_acc) {
       require_auth( exc_acc );
       
@@ -328,17 +324,17 @@ namespace match {
 
             order_deal_info order_deal_base = order_deal_info{itr_begin->id,itr_begin->exc_acc,itr_begin->maker};
             order_deal_info order_deal_quote = order_deal_info{base_order->id,base_order->exc_acc,base_order->maker};
-            //部分成交
+
             if ( ( base_coin && itr_begin->undone_quote <= undone_base ) || ( !base_coin && itr_begin->undone_base <= undone_quote) ) {
-               //修改表格     或者这里不修改，到循环结束再修改
                undone_base -= itr_begin->undone_quote;
                undone_quote -= itr_begin->undone_base;
 
                done_base += itr_begin->undone_quote;
                done_quote += itr_begin->undone_base;
+
                recorddeal_param temp_deal{deal_scope,order_deal_base,order_deal_quote,itr_begin->undone_base,itr_begin->undone_quote,current_block,exc_acc};
                deal_param.push_back(temp_deal);
-               //record_deal_info(deal_scope,order_deal_base,order_deal_quote,itr_begin->undone_base,itr_begin->undone_quote,current_block,exc_acc);
+
                dealfee(itr_begin->undone_quote,itr_begin->receiver,fee_name,exc_acc,!base_coin);
 
                idx.erase( itr_begin );
@@ -347,21 +343,18 @@ namespace match {
                   is_not_done = false;
                }
             }
-            //全部成交  quote单有剩余
             else {
-               //base 还是quote要考虑一下
                auto quote_order_quote = asset( static_cast<int128_t>(undone_quote.amount) * static_cast<int128_t>(itr_begin->undone_quote.amount) 
                   / itr_begin->undone_base.amount,itr_begin->undone_quote.symbol );
-               //打币 给itr_begin->receiver 打币 quote_order_quote
                dealfee(quote_order_quote,itr_begin->receiver,fee_name,exc_acc,!base_coin);
-               //quote base coin 需要使用  以我的价格为准的，不需要修改
+
                idx.modify(itr_begin, name{exc_acc}, [&]( auto& s ) {
                   s.undone_base -= undone_quote;
                   s.undone_quote -= quote_order_quote;
                });
+
                recorddeal_param temp_deal{deal_scope,order_deal_base,order_deal_quote,undone_quote,quote_order_quote,current_block,exc_acc};
                deal_param.push_back(temp_deal);
-               //record_deal_info(deal_scope,order_deal_base,order_deal_quote,undone_quote,quote_order_quote,current_block,exc_acc);
                
                done_base += quote_order_quote;
                done_quote += undone_quote;
@@ -385,9 +378,7 @@ namespace match {
          temp.send( deal_param );
       }
 
-      //先打币，给base_order->receiver 打币done_quote，再改表，这里dealfee也是不对的
       if ( done_quote.amount > 0 ) {
-         //记录这次成交相关价格信息
          if( deal_scope == scope_quote ) {
             record_price_info(deal_scope,done_base,done_quote,current_block,exc_acc);
          }
@@ -413,7 +404,6 @@ namespace match {
          });
       }
       else {
-         //返币
          if ( base_coin && undone_quote.amount > 0 ) {
             transdeposit(undone_quote,base_order->receiver);
          }
@@ -516,8 +506,6 @@ namespace match {
       });
    }
 
-//预扣模式问题好像是很多的
-//费率提高怎么办？如果一个运营商修改费用导致整个链不能使用怎么办？  如果预扣的手续费被修改会是一件很麻烦的事情，如果不去预扣，用户手续费不足怎么办？
    bool exchange::paycardfee(const asset& quantity,const account_name& from,const account_name& to) {
       deposits deposit_table(_self,from);
       auto exist_from = deposit_table.find( quantity.symbol.raw() );
@@ -534,7 +522,7 @@ namespace match {
       if ( exist_to == deposit_table_to.end() ) {
          return false;
       }
-      eosio::print_f("%---%---%---\t",quantity,from,to);
+      
       deposit_table_to.modify(exist_to, name{}, [&]( auto& s ) { 
          s.balance += quantity;
       });
@@ -545,7 +533,6 @@ namespace match {
       return true;
    }
 
-//点卡模式怎么知道哪个币种收多少手续费？
    void exchange::dealfee(const asset &quantity,const account_name &to,const name &fee_name,const account_name &exc_acc,bool base_coin) {
       if ( fee_name.value == name{}.value ) {
          transdeposit(quantity,to);
@@ -564,16 +551,16 @@ namespace match {
             transdeposit(quantity,to);
             break;
          case name{"f.ratio"_n}.value :
-            exc_quantity = quantity * trade_fee->rate / 10000;
+            exc_quantity = quantity * trade_fee->rate / FEE_ACCURACY;
             trader_quantity = quantity - exc_quantity;
             transdeposit(trader_quantity,to);
             transdeposit(exc_quantity,exc_acc);
             break;
          case name{"p.ratio"_n}.value :
-            exc_quantity = asset(quantity.amount * card_rate / 10000,trade_fee->fee_card.symbol);
+            exc_quantity = asset(quantity.amount * card_rate / FEE_ACCURACY,trade_fee->fee_card.symbol);
             cardfee_success = paycardfee(exc_quantity,to,exc_acc);
             if ( !cardfee_success ) {
-               exc_quantity = quantity * trade_fee->rate / 10000;
+               exc_quantity = quantity * trade_fee->rate / FEE_ACCURACY;
                trader_quantity = quantity - exc_quantity;
                transdeposit(exc_quantity,exc_acc);
             }
