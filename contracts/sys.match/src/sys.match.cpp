@@ -45,6 +45,7 @@ namespace match {
       require_auth( exc_acc );
       checkExcAcc(exc_acc);
       check(base_coin.symbol.raw() != quote_coin.symbol.raw(), "base coin and quote coin must be different");
+      check(base_coin.symbol.precision() < 0x0F && quote_coin.symbol.precision() < 0x0F,"the contract does not support large precision coin");
       trading_pairs trading_pairs_table(_self,exc_acc);
 
       auto pair = trading_pairs_table.find(trade_pair_name.value);
