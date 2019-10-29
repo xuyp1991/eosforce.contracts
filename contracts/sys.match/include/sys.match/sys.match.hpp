@@ -161,15 +161,11 @@ namespace match {
       uint64_t primary_key() const { return id; }
    };
    typedef eosio::multi_index<"recordprice"_n, record_price_info> record_prices;
-//点卡模式会有很多限制，固定手续费，按比例手续费，固定只能收一次
+//费用得优先级  优先点卡,其次代币
    constexpr static auto fee_type_data = std::array<name, 7>{{
       name{"f.null"_n},
-      name{"f.fix"_n},
       name{"f.ratio"_n},
-      name{"f.ratiofix"_n},
-      name{"p.fix"_n},
       name{"p.ratio"_n},
-      name{"p.ratiofix"_n}
    }};
 
    struct [[eosio::table, eosio::contract("sys.match")]]  fee_info {
@@ -177,9 +173,10 @@ namespace match {
       
       name        fee_type;
       uint32_t    rate;
+      uint32_t    rate_base;
+      uint32_t    rate_quote;
       
-      asset       fees_base;
-      asset       fees_quote;
+      asset fee_card;
       
       uint64_t primary_key() const { return fee_name.value; }
    };
@@ -187,8 +184,7 @@ namespace match {
 
    struct [[eosio::table, eosio::contract("sys.match")]]  deposit_info {
       asset balance;
-      asset frozen_balance;
-      
+      asset freezen;
       uint64_t primary_key() const { return balance.symbol.raw(); }
    };
    typedef eosio::multi_index<"deposit"_n, deposit_info> deposits;
@@ -199,7 +195,7 @@ namespace match {
 
          ACTION regex(account_name exc_acc);
          ACTION createtrade(name trade_pair_name, asset base_coin, asset quote_coin, account_name exc_acc);
-         ACTION feecreate(name fee_name,name fee_type,uint32_t rate, asset base_coin, asset quote_coin, account_name exc_acc);
+         ACTION feecreate(name fee_name,name fee_type,uint32_t rate,uint32_t rate_base,uint32_t rate_quote, asset coin_card, account_name exc_acc);
          ACTION setfee(name trade_pair_name, name fee_name, account_name exc_acc);
 
          ACTION openorder(account_name traders, asset base_coin, asset quote_coin,name trade_pair_name, account_name exc_acc);
@@ -230,7 +226,8 @@ namespace match {
          using setfee_action           = eosio::action_wrapper<"setfee"_n,          &exchange::setfee>;
          using openorder_action        = eosio::action_wrapper<"openorder"_n,       &exchange::openorder>;
          using match_action            = eosio::action_wrapper<"match"_n,           &exchange::match>;
-         using cancelorder_action            = eosio::action_wrapper<"cancelorder"_n,           &exchange::cancelorder>;
+         using cancelorder_action      = eosio::action_wrapper<"cancelorder"_n,     &exchange::cancelorder>;
+         using depositorder_action     = eosio::action_wrapper<"depositorder"_n,     &exchange::depositorder>;
 
       private:
          void checkExcAcc(account_name exc_acc);
@@ -241,10 +238,11 @@ namespace match {
          void transfer_to_other(const asset& quantity,const account_name& to);
          inline void checkfeetype(name fee_type);
          //dealfee 调用transfer
-         void dealfee(const asset &quantity,const account_name &to,const name &fee_name,const account_name &exc_acc);
+         void dealfee(const asset &quantity,const account_name &to,const name &fee_name,const account_name &exc_acc,bool base_coin);
          void transdeposit(const asset& quantity,const account_name& to);
-         void prepaycardfee(const asset& quantity,const account_name& from);
-         void paycardfee(const asset& quantity,const account_name& from,const account_name& to);
+         // void prepaycardfee(const asset& quantity,const account_name& from);
+         bool paycardfee(const asset& quantity,const account_name& from,const account_name& to);
+         //bool openordercardfee(const asset& quantity,const account_name& from,const name &fee_name,const account_name &exc_acc);
    };
    /** @}*/ // end of @defgroup eosiomsig eosio.msig
 } /// namespace eosio

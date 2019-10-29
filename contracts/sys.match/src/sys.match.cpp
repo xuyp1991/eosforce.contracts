@@ -96,7 +96,7 @@ namespace match {
 
    }
 //目前仅支持按比例收取
-   ACTION exchange::feecreate(name fee_name,name fee_type,uint32_t rate, asset base_coin, asset quote_coin, account_name exc_acc) {
+   ACTION exchange::feecreate(name fee_name,name fee_type,uint32_t rate,uint32_t rate_base,uint32_t rate_quote, asset coin_card, account_name exc_acc) {
       require_auth( exc_acc );
 
       checkExcAcc(exc_acc);
@@ -107,18 +107,20 @@ namespace match {
       if ( fee_info == trade_fee_tbl.end() ) {
          trade_fee_tbl.emplace( name{exc_acc}, [&]( auto& p ) {
             p.fee_name = fee_name;
-            p.fees_base  = base_coin;
-            p.fees_quote  = quote_coin;
+            p.fee_card  = coin_card;
             p.fee_type = fee_type;
             p.rate = rate;
+            p.rate_base = rate_base;
+            p.rate_quote = rate_quote;
          });
       }
       else {
          trade_fee_tbl.modify(fee_info, name{exc_acc}, [&]( auto& p ) {
-            p.fees_base  = base_coin;
-            p.fees_quote  = quote_coin;
+            p.fee_card  = coin_card;
             p.fee_type = fee_type;
             p.rate = rate;
+            p.rate_base = rate_base;
+            p.rate_quote = rate_quote;
          } );
       }
    }
@@ -134,12 +136,6 @@ namespace match {
       trade_fees trade_fee_tbl(_self,exc_acc);
       auto trade_fee =  trade_fee_tbl.find(fee_name.value);
       check(trade_fee != trade_fee_tbl.end(), "can not find the trade fee info");
-
-      //check fee type
-      if ( trade_fee->fee_type.value == name{"f.fix"}.value || trade_fee->fee_type.value == name{"f.ratiofix"}.value ) {
-         check( trade_fee->fees_base.symbol.raw() == trade_pair->base.symbol.raw() && trade_fee->fees_quote.symbol.raw() == trade_pair->quote.symbol.raw(),
-               "can not to set fee to the pair,the type is not match the fee base or/and fee quote" );
-      }
 
       trading_pairs_table.modify(trade_pair, name{exc_acc}, [&]( auto& s ) {
          s.fee_name = fee_name;
@@ -242,8 +238,8 @@ namespace match {
       auto trade_pair =  trading_pairs_tbl.find(trade_pair_name.value);
       check(trade_pair != trading_pairs_tbl.end(), "can not find the trade pair");
 
-      check( ( base_coin.symbol == trade_pair->base.symbol && quote_coin.symbol == trade_pair->quote.symbol )
-         ||( base_coin.symbol == trade_pair->quote.symbol && quote_coin.symbol == trade_pair->base.symbol ) ,"the order do not match the tradepair" );
+      check( ( base_coin.symbol == trade_pair->base.symbol && quote_coin.symbol == trade_pair->quote.symbol && base_coin > trade_pair->base )
+         ||( base_coin.symbol == trade_pair->quote.symbol && quote_coin.symbol == trade_pair->base.symbol && base_coin > trade_pair->quote ) ,"the order do not match the tradepair" );
       
       orderscopes order_scope_table(_self,_self.value);
       uint128_t scopekey_base =  make_128_key(base_coin.symbol.raw(),quote_coin.symbol.raw(),trade_pair->base.symbol.raw());
@@ -338,7 +334,7 @@ namespace match {
                done_base += itr_begin->undone_quote;
                done_quote += itr_begin->undone_base;
                record_deal_info(deal_scope,order_deal_base,order_deal_quote,itr_begin->undone_base,itr_begin->undone_quote,current_block,exc_acc);
-               dealfee(itr_begin->undone_quote,itr_begin->receiver,fee_name,exc_acc);
+               dealfee(itr_begin->undone_quote,itr_begin->receiver,fee_name,exc_acc,!base_coin);
 
                idx.erase( itr_begin );
 
@@ -352,7 +348,7 @@ namespace match {
                auto quote_order_quote = asset( static_cast<int128_t>(undone_quote.amount) * static_cast<int128_t>(itr_begin->undone_quote.amount) 
                   / itr_begin->undone_base.amount,itr_begin->undone_quote.symbol );
                //打币 给itr_begin->receiver 打币 quote_order_quote
-               dealfee(quote_order_quote,itr_begin->receiver,fee_name,exc_acc);
+               dealfee(quote_order_quote,itr_begin->receiver,fee_name,exc_acc,!base_coin);
                //quote base coin 需要使用  以我的价格为准的，不需要修改
                idx.modify(itr_begin, name{exc_acc}, [&]( auto& s ) {
                   s.undone_base -= undone_quote;
@@ -384,7 +380,7 @@ namespace match {
             record_price_info(deal_scope,done_quote,done_base,current_block,exc_acc);
          }
 
-         dealfee(done_quote,base_order->receiver,fee_name,exc_acc);
+         dealfee(done_quote,base_order->receiver,fee_name,exc_acc,base_coin);
       }
       
       if ( ( base_coin && undone_base.amount > 0 ) || ( !base_coin && undone_quote.amount > 0 ) ) {
@@ -423,7 +419,7 @@ namespace match {
 
       deposit_table.emplace(name{user},[&]( auto& s ){
          s.balance = asset(0,quantity.symbol);
-         s.frozen_balance = asset(0,quantity.symbol);
+         s.freezen = asset(0,quantity.symbol);
       });
    }
 
@@ -496,40 +492,37 @@ namespace match {
       });
    }
 
-   void exchange::prepaycardfee(const asset& quantity,const account_name& from) {
-      deposits deposit_table(_self,from);
-      auto exist = deposit_table.find( quantity.symbol.raw() );
-      check( exist != deposit_table.end(),"the deposit do not existed");
-      check( exist->balance >= quantity ,"the deposit balance is not enough");
-
-      deposit_table.modify(exist, name{}, [&]( auto& s ) { 
-         s.balance -= quantity;
-         s.frozen_balance += quantity;
-      });
-   }
 //预扣模式问题好像是很多的
 //费率提高怎么办？如果一个运营商修改费用导致整个链不能使用怎么办？  如果预扣的手续费被修改会是一件很麻烦的事情，如果不去预扣，用户手续费不足怎么办？
-   void exchange::paycardfee(const asset& quantity,const account_name& from,const account_name& to) {
+   bool exchange::paycardfee(const asset& quantity,const account_name& from,const account_name& to) {
       deposits deposit_table(_self,from);
       auto exist_from = deposit_table.find( quantity.symbol.raw() );
-      check( exist_from != deposit_table.end(),"the deposit from do not existed");
-      check( exist_from->frozen_balance >= quantity ,"the user frozen_balance is not enough");
+      if ( exist_from == deposit_table.end() ) {
+         return false;
+      }
 
-      deposits deposit_table_to(_self,from);
+      if (exist_from->balance < quantity) {
+         return false;
+      }
+
+      deposits deposit_table_to(_self,to);
       auto exist_to = deposit_table_to.find( quantity.symbol.raw() );
-      check( exist_to != deposit_table_to.end(),"the deposit to do not existed");
-
+      if ( exist_to == deposit_table_to.end() ) {
+         return false;
+      }
+      eosio::print_f("%---%---%---\t",quantity,from,to);
       deposit_table_to.modify(exist_to, name{}, [&]( auto& s ) { 
          s.balance += quantity;
       });
 
       deposit_table.modify(exist_from, name{}, [&]( auto& s ) { 
-         s.frozen_balance -= quantity;
+         s.balance -= quantity;
       });
+      return true;
    }
+
 //点卡模式怎么知道哪个币种收多少手续费？
-   void exchange::dealfee(const asset &quantity,const account_name &to,const name &fee_name,const account_name &exc_acc) {
-      
+   void exchange::dealfee(const asset &quantity,const account_name &to,const name &fee_name,const account_name &exc_acc,bool base_coin) {
       if ( fee_name.value == name{}.value ) {
          transdeposit(quantity,to);
          return ;
@@ -540,42 +533,34 @@ namespace match {
       check(trade_fee != trade_fee_tbl.end(), "can not find the trade fee info");
 
       asset exc_quantity,trader_quantity,min_fee;
-      switch(trade_fee->fee_name.value) {
-         case name{"f.null"_n}.value:
+      auto card_rate = base_coin ? trade_fee->rate_base : trade_fee->rate_quote;
+      bool cardfee_success = true;
+      switch(trade_fee->fee_type.value) {
+         case name{"f.null"_n}.value :
             transdeposit(quantity,to);
             break;
-         case name{"f.fix"_n}.value:
-            exc_quantity = quantity.symbol.raw() == trade_fee->fees_base.symbol.raw() ? trade_fee->fees_base:trade_fee->fees_quote;
-            trader_quantity = quantity - exc_quantity;
-            transdeposit(trader_quantity,to);
-            transdeposit(exc_quantity,exc_acc);
-            break;
-         case name{"f.ratio"_n}.value:
+         case name{"f.ratio"_n}.value :
             exc_quantity = quantity * trade_fee->rate / 10000;
             trader_quantity = quantity - exc_quantity;
             transdeposit(trader_quantity,to);
             transdeposit(exc_quantity,exc_acc);
             break;
-         case name{"f.ratiofix"_n}.value:
-            exc_quantity = quantity * trade_fee->rate / 10000;
-            min_fee = quantity.symbol.raw() == trade_fee->fees_base.symbol.raw() ? trade_fee->fees_base:trade_fee->fees_quote;
-            exc_quantity = exc_quantity > min_fee ? exc_quantity : min_fee;
-            trader_quantity = quantity - exc_quantity;
+         case name{"p.ratio"_n}.value :
+            exc_quantity = asset(quantity.amount * card_rate / 10000,trade_fee->fee_card.symbol);
+            cardfee_success = paycardfee(exc_quantity,to,exc_acc);
+            if ( !cardfee_success ) {
+               exc_quantity = quantity * trade_fee->rate / 10000;
+               trader_quantity = quantity - exc_quantity;
+               transdeposit(exc_quantity,exc_acc);
+            }
+            else {
+               trader_quantity = quantity;
+            }
             transdeposit(trader_quantity,to);
-            transdeposit(exc_quantity,exc_acc);
             break;
-         case name{"p.fix"_n}.value:
+         default :
             transdeposit(quantity,to);
             break;
-         case name{"p.ratio"_n}.value:
-            transdeposit(quantity,to);
-            break;
-         case name{"p.ratiofix"_n}.value:
-            transdeposit(quantity,to);
-            break;
-         default:
-            transdeposit(quantity,to);
-            break;                        
       }
    }
 
