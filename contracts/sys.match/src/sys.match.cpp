@@ -296,7 +296,7 @@ namespace match {
       check( scope_order != order_scope_table.end(),"can not find order scope" );
       auto coin = scope_order->coin;
 
-      auto base_price = cal_price(base_order->base.amount,base_order->quote.amount);//static_cast<int128_t>(base_order->base.amount) * 1000000 / base_order->quote.amount;   //to be modify
+      auto base_price = cal_price(base_order->base.amount,base_order->quote.amount,base_order->base.symbol.precision(),base_order->quote.symbol.precision());//static_cast<int128_t>(base_order->base.amount) * 1000000 / base_order->quote.amount;   //to be modify
       orderbooks orderbook_table_quote( _self,scope_quote );
       auto deal_scope = scope_base > scope_quote ? scope_base : scope_quote;
 

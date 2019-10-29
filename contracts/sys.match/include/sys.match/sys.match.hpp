@@ -57,8 +57,8 @@ namespace match {
       return uint128_t(b)<<64 | a;
    }
 
-   inline uint128_t cal_price(const int64_t &a,const int64_t &b) {
-      return static_cast<int128_t>(a) * PRICE_ACCURACY / b;
+   inline uint128_t cal_price(const int64_t &a,const int64_t &b,const uint8_t precision_a,const uint8_t precision_b) {
+      return static_cast<int128_t>(a) * PRICE_ACCURACY * eosforce::utils::precision_base(precision_b) / eosforce::utils::precision_base(precision_a) / b;
    }
 
    struct [[eosio::table, eosio::contract("sys.match")]] trading_pair{
@@ -102,7 +102,7 @@ namespace match {
 
       uint64_t primary_key() const { return id; }
       uint128_t get_price() const {// to be modify
-         return cal_price(quote.amount , base.amount);
+         return cal_price(quote.amount , base.amount,quote.symbol.precision(),base.symbol.precision());
       }
       uint64_t get_maker() const { return maker; }
    };
