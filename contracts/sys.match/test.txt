@@ -1,0 +1,69 @@
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 create account eosforce sys.match EOS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 transfer eosforce sys.match "500000.0000 EOS"
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action eosio vote4ram '["sys.match","biosbpa","10000.0000 EOS"]' -p sys.match
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 set contract sys.match /home/xuyapeng/eosforce/newyear/xuyp/checkout0814/eosforce.contracts/build/contracts/sys.match 
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action eosio vote4ram '["eosforce","biosbpa","10000.0000 EOS"]' -p eosforce
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 set setfee sys.match regex "0.2000 EOS" 0 0 0
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 set setfee sys.match createtrade "1.0000 EOS" 0 0 0
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 set setfee sys.match openorder "1.0000 EOS" 0 0 0
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 set setfee sys.match match "1.0000 EOS" 0 0 0
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 set setfee sys.match cancelorder "0.5000 EOS" 0 0 0
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 set setfee sys.match opendeposit "0.5000 EOS" 0 0 0
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 set setfee sys.match claimdeposit "0.5000 EOS" 0 0 0
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 set setfee sys.match depositorder "1.0000 EOS" 0 0 0
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 set setfee sys.match feecreate "1.0000 EOS" 0 0 0
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 set setfee sys.match setfee "0.1000 EOS" 0 0 0
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 set setfee sys.match recorddeal "1.0000 EOS" 0 0 0
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action sys.match regex '["eosforce"]' -p eosforce
+
+ ../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001  set account permission eosforce active '{ "threshold": 1, "keys": [ {"key":"EOS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV","weight":1} ], "accounts":[  { "permission": { "actor": "sys.match", "permission": "eosio.code" }, "weight": 1 } ] }' owner
+
+ ../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001  set account permission sys.match active '{ "threshold": 1, "keys": [ {"key":"EOS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV","weight":1} ], "accounts":[  { "permission": { "actor": "sys.match", "permission": "eosio.code" }, "weight": 1 } ] }' owner
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action eosio.token create '["eosforce","10000000000.0000 EAT"]' -p eosforce
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action eosio.token issue '["testa","50000.0000 EAT","test"]' -p eosforce
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action eosio.token issue '["testb","50000.0000 EAT","test"]' -p eosforce
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action eosio.token issue '["testc","50000.0000 EAT","test"]' -p eosforce
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action eosio.token issue '["eosforce","50000.0000 EAT","test"]' -p eosforce
+
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action sys.match createtrade '["eos.eat","0.0000 EOS","0.0000 EAT","eosforce"]' -p eosforce
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action sys.match createtrade '["eat.eos","0.0000 EAT","0.0000 EOS","eosforce"]' -p eosforce
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action sys.match feecreate '["rate1","p.ratio",100,100,10,"0.0000 EOS","eosforce"]' -p eosforce
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action sys.match setfee '["eos.eat","rate1","eosforce"]' -p eosforce
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action sys.match opendeposit '["testa","0.0000 EAT","test"]' -p testa
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action sys.match opendeposit '["testa","0.0000 EOS","test"]' -p testa 
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action sys.match opendeposit '["testb","0.0000 EOS","test"]' -p testb
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action sys.match opendeposit '["testb","0.0000 EAT","test"]' -p testb 
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action sys.match opendeposit '["eosforce","0.0000 EOS","test"]' -p eosforce
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action sys.match opendeposit '["eosforce","0.0000 EAT","test"]' -p eosforce 
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 transfer testa sys.match "100.0000 EOS" "m.order;1000.0000 EAT;eos.eat;eosforce"
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 transfer testa sys.match "100.0000 EOS" "m.order;999.0000 EAT;eos.eat;eosforce"
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 transfer testa sys.match "100.0000 EOS" "m.order;998.0000 EAT;eos.eat;eosforce"
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 transfer testa sys.match "100.0000 EOS" "m.order;1001.0000 EAT;eos.eat;eosforce"
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 transfer testa sys.match "100.0000 EOS" "m.order;1002.0000 EAT;eos.eat;eosforce"
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action eosio.token transfer '["testb","sys.match","3500.0000 EAT","m.order;350.0000 EOS;eat.eos;eosforce"]' -p testb
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 transfer testa sys.match "1000.0000 EOS" "m.deposit"
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 transfer testb sys.match "1000.0000 EOS" "m.deposit"
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 get table sys.match testa deposit
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 get table sys.match testb deposit
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 transfer testa sys.match "100.0000 EOS" "m.order;1000.0000 EAT;eat.eos;eosforce"
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action eosio.token transfer '["testb","sys.match","3500.0000 EAT","m.order;350.0000 EOS;eos.eat;eosforce"]' -p testb
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action eosio.token transfer '["testb","sys.match","100.1000 EAT","m.order;10.0000 EOS;eos.eat;eosforce"]' -p testb
+
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 get table sys.match eosforce deposit
+
+../../build/programs/cleos/cleos --wallet-url http://127.0.0.1:6666 -u http://127.0.0.1:8001 push action sys.match cancelorder '[2,0]' -p testb
