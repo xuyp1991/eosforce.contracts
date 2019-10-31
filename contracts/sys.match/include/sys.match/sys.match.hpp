@@ -117,6 +117,7 @@ namespace match {
       asset quote;
 
       asset coin;
+      uint64_t order_id;
       
       uint64_t primary_key() const { return id; }
       uint128_t by_pair_sym() const { return make_128_key( base.symbol.raw() , quote.symbol.raw(),coin.symbol.raw() ); }
@@ -126,6 +127,7 @@ namespace match {
          > orderscopes; 
 
    struct order_deal_info{
+      uint64_t    order_scope;
       uint64_t    order_id;
       account_name exc_acc;
       account_name trader;
