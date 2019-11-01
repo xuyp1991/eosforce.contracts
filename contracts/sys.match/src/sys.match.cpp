@@ -320,13 +320,6 @@ namespace match {
          auto itr_up = idx.upper_bound( base_price );
          auto itr_begin = idx.cbegin();
 
-         // if ( base_coin ) {
-         //    undone_quote = asset(static_cast<int64_t>(static_cast<uint128_t>(undone_base.amount) * base_order->quote.amount / base_order->base.amount),undone_quote.symbol);
-         // }
-         // else {
-         //    undone_base = asset(static_cast<int64_t>(static_cast<uint128_t>(undone_quote.amount) * base_order->base.amount / base_order->quote.amount),undone_base.symbol);
-         // }
-
          if ( itr_begin != itr_up ) {
 
             order_deal_info order_deal_base = order_deal_info{scope_quote,itr_begin->id,itr_begin->exc_acc,itr_begin->maker};
@@ -343,7 +336,6 @@ namespace match {
                   temp_done_quote = asset( static_cast<int128_t>(temp_done_base.amount) * static_cast<int128_t>(itr_begin->quote.amount) 
                   / itr_begin->base.amount,itr_begin->undone_quote.symbol );
                }
-               //这里添加真正需要成交的数量
                undone_base -= temp_done_quote;
                undone_quote -= temp_done_base;
 
@@ -362,7 +354,6 @@ namespace match {
                }
             }
             else {
-               //这里添加真正需要成交的数量
                if ( base_coin ) {
                   temp_done_quote = undone_base;
                   temp_done_base = asset( static_cast<int128_t>(temp_done_quote.amount) * static_cast<int128_t>(itr_begin->base.amount) 
@@ -373,8 +364,7 @@ namespace match {
                   temp_done_quote = asset( static_cast<int128_t>(temp_done_base.amount) * static_cast<int128_t>(itr_begin->quote.amount) 
                   / itr_begin->base.amount,itr_begin->undone_quote.symbol );
                }
-               // auto quote_order_quote = asset( static_cast<int128_t>(undone_quote.amount) * static_cast<int128_t>(itr_begin->undone_quote.amount) 
-               //    / itr_begin->undone_base.amount,itr_begin->undone_quote.symbol );
+
                dealfee(temp_done_quote,itr_begin->receiver,fee_name,exc_acc,!base_coin);
 
                idx.modify(itr_begin, name{exc_acc}, [&]( auto& s ) {
@@ -420,13 +410,6 @@ namespace match {
       
       if ( ( base_coin && undone_base.amount > 0 ) || ( !base_coin && undone_quote.amount > 0 ) ) {
          
-         // if ( base_coin ) {
-         //    undone_quote = asset(static_cast<int64_t>(static_cast<uint128_t>(undone_base.amount) * base_order->quote.amount / base_order->base.amount),undone_quote.symbol);
-         // }
-         // else {
-         //    undone_base = asset(static_cast<int64_t>(static_cast<uint128_t>(undone_quote.amount) * base_order->base.amount / base_order->quote.amount),undone_base.symbol);
-         // }
-
          orderbook_table.modify(base_order,name{exc_acc},[&]( auto& s ) {
             s.undone_base = undone_base;
             s.undone_quote = undone_quote;
